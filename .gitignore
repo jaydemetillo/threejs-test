@@ -1,0 +1,8 @@
+node_modules/
+dist/
+*.local
+.DS_Store
+
+# Never commit the raw uncompressed model export (76MB+).
+# Only the optimized public/models/model.glb ships.
+source-models/

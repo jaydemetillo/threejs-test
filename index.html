@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>In Singapore's Fire Stations, the Fix Was Not the Technology Everyone Expected</title>
+  <meta name="description" content="A three-year project replaced the paper checks behind emergency response. The hardest part was earning the trust of the people holding the clipboard." />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' rx='3' fill='%232fbf71'/></svg>" />
+</head>
+<body>
+  <header class="masthead">
+    <p class="masthead__section">Technology &nbsp;·&nbsp; Public Service</p>
+    <p class="masthead__brand">The Field Report</p>
+    <p class="masthead__date">July 31, 2026</p>
+  </header>
+
+  <main>
+    <!-- ============ HERO ============ -->
+    <section class="hero">
+      <h1 class="hero__title">In Singapore&rsquo;s Fire Stations, the Fix Was Not the Technology Everyone Expected</h1>
+      <p class="hero__dek">A three-year project replaced the paper checks behind emergency response. The hardest part was earning the trust of the people holding the clipboard, and then knowing when to stop.</p>
+      <p class="hero__byline">By <span>Jason Demetillo</span> &nbsp;·&nbsp; Reporting from Singapore</p>
+
+      <figure class="hero__figure">
+        <div class="hero__placeholder" role="img" aria-label="Hero image placeholder">
+          <span>Hero image placeholder</span>
+        </div>
+        <figcaption>A pumper appliance outside a Singapore Civil Defence Force station. <span class="credit">Placeholder — final photography to come.</span></figcaption>
+      </figure>
+    </section>
+
+    <!-- ============ ARTICLE OPEN ============ -->
+    <section class="article">
+      <p><span class="dateline">SINGAPORE</span> — The first thing the firefighters said was no.</p>
+
+      <p>A small team of government technologists had come to a fire station in 2023 to watch how equipment gets checked before a shift. They wanted to understand why the checks still ran on paper. One of the officers cut in early.</p>
+
+      <blockquote class="pullquote">
+        <p>&ldquo;If your solution is to use RFID, I don&rsquo;t want to support this.&rdquo;</p>
+      </blockquote>
+
+      <!-- Two paragraphs, side by side in a grid -->
+      <div class="duo-grid">
+        <p>It was not a hypothetical objection. The Singapore Civil Defence Force had run an RFID tagging system before. When it reached end of life, stations went back to pen and paper, and a few tried online forms. The team asked why nobody missed it, and the answer explained everything about the environment.</p>
+        <p>Firefighting equipment goes into actual fires, so the tags burned. It also lives in water, so the tags fell off. Officers described scanning a tag sitting inside an appliance while the equipment it was meant to represent was not there at all. The system produced a clean record of a check that had not really happened.</p>
+      </div>
+
+      <p>That conversation set the terms for what came next. The team was not being asked for better tracking hardware. It was being asked to make a daily, physical, safety-critical routine faster and more honest.</p>
+
+      <p>Three years later, the tool they built covers every vehicle, equipment and personal protective equipment check across all 23 SCDF fire stations. It logged 113,919 submissions in the second quarter of 2026, at a submission rate of 96.5 percent. On 6 July 2026, the team stopped building new features and put it into maintenance, a decision that turned out to be as instructive as the launch.</p>
+
+      <p class="scrolly-lead">The vehicle at the center of those checks is the pumper appliance below. Keep scrolling — each side of the truck tells part of the story.</p>
+    </section>
+
+    <!-- ============ 3D SCROLLYTELLING HERO ============ -->
+    <section class="scrolly" aria-label="Interactive 3D fire appliance">
+      <div class="scrolly__stage">
+        <canvas class="scrolly__canvas"></canvas>
+
+        <div class="scrolly__loading">
+          <p class="scrolly__loading-label">Loading 3D model <span class="scrolly__loading-pct">0%</span></p>
+        </div>
+
+        <div class="scrolly__cards"></div>
+
+        <p class="scrolly__hint">Scroll to explore the appliance</p>
+      </div>
+    </section>
+
+    <!-- ============ ARTICLE CONTINUES ============ -->
+    <section class="article">
+      <h2>The problem was not the checks</h2>
+      <p>Every day, roughly 600 on-duty frontline officers account for around 350 emergency vehicles and vessels. Fire trucks, ambulances, rescue appliances, protective gear. The checks exist because emergency services need to know their equipment works before the call comes in.</p>
+      <p>Nobody argued the checks were unnecessary. The problem was what happened to them afterwards.</p>
+      <p>Records sat in binders, printed spreadsheets and station-level templates. Each station could download, edit and print its own version, so the same check could look different across the force, sometimes still listing equipment models that had been replaced. A completed check proved compliance. It could not tell headquarters which stations were consistently late, which equipment kept failing, or which shifts were skipping checks.</p>
+      <p>Paper met the audit requirement. It did not add up to anything.</p>
+      <p>The team&rsquo;s own summary of it later was blunt: paper does not compound into operational intelligence.</p>
+
+      <h2>Prove they will use it</h2>
+      <p>The product, called Armoury, started at Hack for Public Good in 2023. The first prototype was rough enough that the team nicknamed it &ldquo;Tinder for Checks&rdquo;, a swipe-through interface built mainly to find out whether a digital check could work at all.</p>
+      <p>Roughness was the point. It gave them something to put in front of firefighters within days rather than months.</p>
+      <p>The first measure of success was deliberately unambitious: number of checks submitted. Not insight, not analytics, just the basic question of whether frontliners would open the thing every morning without being forced to.</p>
+      <p>They did. By early 2026 the product had full coverage of its target checklists and was clearing more than 110,000 submissions a quarter.</p>
+      <p>For an operational tool, that is not a vanity number. Without submissions there is no data, no trust and nothing to build on.</p>
+
+      <h2>Then success became the problem</h2>
+      <p>Once the checks were digital, headquarters could ask questions it had never been able to ask. Which stations run late. Which items get marked faulty most often. Which divisions follow up quickly. Whether any of it could inform procurement.</p>
+      <p>This was good news that arrived as a workload. Armoury now had two very different user groups. Thousands of frontliners who needed speed and fewer taps, and a much smaller group of headquarters and admin staff whose needs were fewer in number but far more complicated.</p>
+      <p>The team built dashboards three times. The first was a broad overview, and users said it was too generic to act on. The second was tailored to specific department requests, and still required too much digging. The third stripped it back to red and green readiness indicators, which finally gave divisional commanders something they could hold stations accountable to.</p>
+      <p>Even then, one group stayed unhappy. The logistics department wanted procurement-grade answers. Armoury could tell them whether checks were happening and what was marked broken. It could not tell them the force-wide inventory count, or whether more stock needed ordering, because it never held that information.</p>
+      <p>The team&rsquo;s response was the more interesting decision in the whole project. Rather than expand Armoury into an inventory system, they treated it as one half of a pair. Armoury would supply the demand signal, meaning usage, faults and missing items. The existing logistics system would supply the supply signal. The two would be connected rather than merged.</p>
+      <p>Digitising the front door, as one internal note put it, creates expectations in every room behind it. Answering all of them would have turned a readiness tool into something nobody had asked for.</p>
+
+      <h2>Changing what counts as success</h2>
+      <p>By 2026 the original measure had done its job, and kept optimising for it would have meant optimising for the wrong thing. Submission counts prove a checklist is being filled in. They do not prove anyone wants to fill it in.</p>
+      <p>So the team switched to frontline satisfaction, which promptly delivered bad news. Satisfaction had fallen from 4.3 out of 5 in late 2025 to 3.68 in the first quarter of 2026. A usability audit found too many navigation steps, inconsistent patterns and a cluttered home screen, with a system usability score of 67 out of 100, just under the 68 that is generally treated as average.</p>
+      <p>The rebuild that followed was unglamorous and specific. A cleaner home screen. Clearer checklist grouping. Larger yes and no targets. A prompt to report the issue when someone marked something as failing. Checklists filtered by service type, so an officer starting a shift saw the handful relevant to their role instead of more than 50 options.</p>
+      <p>One fix stood out because of how ordinary it was. Armoury had allowed a single photo per question. Ambulance crews, who had photo requirements attached to their checks, were manually stitching several images into one before uploading. The team raised the limit to six. Satisfaction among that group went from 26.7 percent to 82.5 percent.</p>
+      <p>The team also brought protective equipment checks onto the platform across all 23 stations, and added a way to mark an unfilled manning slot as not in use with one tap instead of twelve.</p>
+      <p>After the rebuild, satisfaction came back to 4.29 out of 5 across 937 respondents, with 84.7 percent satisfied. Median check time fell from 41 minutes to 38.5 minutes, against a paper baseline of over an hour. Checks got faster even though the interface did more.</p>
+      <p>The team missed its own stretch target of 4.5 and accepted the result anyway, on the grounds that the remaining gap came from photo and operational policy requirements users disliked, not from anything the product could fix. That distinction is easy to blur. A product team should fix product friction, and should not pretend every policy complaint is a design problem.</p>
+
+      <h2>Knowing when to stop</h2>
+      <p>Armoury entered maintenance on 6 July 2026. Not a sunset. The product keeps running, security issues get fixed, data problems get handled, users still get support. What stops is new features and open-ended roadmap growth.</p>
+      <p>The team treated that transition as work in its own right. A penetration test was completed with an external security firm, which returned no critical findings. Runbooks, monitoring, access control, backups and handover documentation were prepared. Stakeholder sign-off was obtained. The point was to avoid leaving a mission-critical system frozen in a fragile state.</p>
+      <p>Maintenance is not what happens when a team loses interest. It is what happens when a product has landed and the remaining work is sustaining work.</p>
+      <p>What comes next is deliberately modest. Armoury stays stable for SCDF. It may be opened to other agencies as a way of testing whether real demand exists, without promising new features to anyone. And the team is looking at its next problem, applying a higher bar than it did the first time. A strong partner relationship is no longer enough on its own. The next problem needs a sponsor, measurable impact and enough clarity to justify the investment.</p>
+
+      <h2>The paper, in the end</h2>
+      <p>Armoury started with paper. Not policy paper. Actual checklists, printed at the station, filled in with wet hands, filed in a binder.</p>
+      <p>It ended as the system SCDF uses to know, every day, that the equipment its responders depend on is where it should be and works. The change was not that checks moved onto a screen. It was that readiness became visible while there was still time to do something about it.</p>
+      <p>Which is roughly what the firefighters were asking for in that first conversation, when they said no to the tags. They never objected to being checked on. They objected to a system that recorded a check without knowing whether it was true.</p>
+    </section>
+
+    <!-- ============ FILLER / RELATED ============ -->
+    <section class="article article--filler">
+      <h2>More from this series</h2>
+      <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Integer posuere erat a ante venenatis dapibus posuere velit aliquet. Cras justo odio, dapibus ac facilisis in, egestas eget quam. Donec ullamcorper nulla non metus auctor fringilla. Vestibulum id ligula porta felis euismod semper.</p>
+      <p>Aenean lacinia bibendum nulla sed consectetur. Maecenas sed diam eget risus varius blandit sit amet non magna. Nullam quis risus eget urna mollis ornare vel eu leo. Etiam porta sem malesuada magna mollis euismod. Curabitur blandit tempus porttitor.</p>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <p>&copy; 2026 The Field Report — scrollytelling test build. All article text is demonstration copy.</p>
+  </footer>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
