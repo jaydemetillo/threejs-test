@@ -11,12 +11,20 @@ Built with **Vite + vanilla Three.js + GSAP ScrollTrigger**. No framework.
 
 ## Quick start
 
-**macOS — no typing:** double-click **`start.command`** in Finder. It finds
-Node (including one installed through nvm, which Finder does not put on `PATH`
-by default), installs dependencies if they are missing or have changed since
-the last run, starts the dev server and opens the tuner in your browser. Leave
-the Terminal window it opens running — that *is* the server; `Control-C` or
-closing the window stops it.
+**macOS — no typing:** double-click **`start.command`** in Finder. It pulls the
+latest commits, finds Node (including one installed through nvm, which Finder
+does not put on `PATH` by default), installs dependencies if they are missing
+or have changed, starts the dev server and opens the tuner in your browser.
+Leave the Terminal window it opens running — that *is* the server; `Control-C`
+or closing the window stops it.
+
+The update step is safe to run unattended and never needs supervising: it is
+skipped entirely when you have uncommitted work, it only fast-forwards (so it
+cannot create a merge commit or a conflicted tree), and any failure — offline,
+diverged, no upstream — is reported and then ignored, because being unable to
+reach GitHub is no reason not to run the copy already on disk. It runs *before*
+the dependency check, so a pull that adds a package is installed in the same
+launch.
 
 If macOS refuses to run it the first time, right-click the file → **Open** →
 **Open** once, and double-click works from then on.
