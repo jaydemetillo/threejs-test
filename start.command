@@ -2,9 +2,12 @@
 #
 # Double-click this file in Finder to run the site locally.
 #
-# It finds Node, installs anything missing, starts the dev server and opens
-# the tuner in your browser. Leave the Terminal window it opens alone — the
-# server runs inside it. Closing that window stops the server.
+# It fetches the latest commits, finds Node, installs anything missing, starts
+# the dev server and opens the tuner in your browser. Leave the Terminal window
+# it opens alone — the server runs inside it. Closing that window stops it.
+#
+# Nothing here is destructive: the update step refuses to run if you have
+# uncommitted work, and only fast-forwards.
 #
 
 set -uo pipefail
@@ -50,8 +53,41 @@ node -e 'const [a,b]=process.versions.node.split(".").map(Number);
 
 printf '  Node %s\n' "$(node -v)"
 
+# ---------------------------------------------------------------- update
+# Pull the latest commits so double-clicking is genuinely the only step.
+#
+# Three guards make this safe to run unattended:
+#   * skipped entirely if there is uncommitted work, so nothing you have in
+#     progress is ever touched;
+#   * --ff-only, so it can only advance the branch — it will never create a
+#     merge commit or leave you in a conflicted state;
+#   * a failure here (offline, no upstream, diverged) is reported and then
+#     ignored, because being unable to reach GitHub is no reason not to run
+#     the copy already on disk.
+if git rev-parse --git-dir >/dev/null 2>&1; then
+  branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo '')
+  if [ -n "$(git status --porcelain 2>/dev/null)" ]; then
+    printf '  Branch %s — local changes, skipping update\n' "$branch"
+  else
+    before=$(git rev-parse HEAD 2>/dev/null)
+    if git pull --ff-only --quiet 2>/dev/null; then
+      after=$(git rev-parse HEAD 2>/dev/null)
+      if [ "$before" = "$after" ]; then
+        printf '  Branch %s — already up to date\n' "$branch"
+      else
+        printf '  Branch %s — updated (%s)\n' "$branch" \
+          "$(git rev-list --count "$before".."$after" 2>/dev/null) new commit(s)"
+      fi
+    else
+      printf '  Branch %s — could not update (offline or diverged), using local copy\n' "$branch"
+    fi
+  fi
+fi
+
 # Install on first run, and whenever dependencies have changed since the last
-# one. This is the step that is easy to forget after pulling new commits.
+# one. Runs AFTER the update above, so a pull that adds a dependency is picked
+# up in the same launch — that exact gap is what broke the first attempt at
+# running this project.
 if [ ! -d node_modules ] || [ package-lock.json -nt node_modules ]; then
   printf '  Installing dependencies (first run or deps changed)…\n\n'
   npm install || fail "npm install failed." "Scroll up for the reason."
@@ -61,8 +97,8 @@ else
   printf '  Dependencies up to date\n'
 fi
 
-printf '  Branch %s\n' "$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo 'n/a')"
 printf '\n  Opening the tuner in your browser. Keep this window open.\n'
-printf '  Press \033[1mControl-C\033[0m here to stop the server.\n\n'
+printf '  Press \033[1mControl-C\033[0m here to stop the server.\n'
+printf '  Tip: add \033[1m?tier=low\033[0m to the URL to see what a budget phone gets.\n\n'
 
 npm start
