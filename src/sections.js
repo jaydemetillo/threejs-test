@@ -90,7 +90,18 @@ export const CAMERA_SETTINGS = {
     // than starting at portrait.
     belowAspect: 1.3,
     fullyByAspect: 1.0,
-    minScale: 0.97,
+    /**
+     * Floor for the crop multiplier once the ramp is at full strength.
+     *
+     * Above 1.0 means "further out than the auto-framed fit" — deliberately.
+     * 0.97 merely stopped the model being clipped, which still read as
+     * edge-to-edge with ~4% of space around it; 1.10 leaves ~16%, against
+     * ~25% on a landscape desktop. Because framedRadius() already folds in
+     * the viewport's own aspect, one value produces the SAME relative margin
+     * on every handset: a narrower phone is automatically pulled back further
+     * in world units.
+     */
+    minScale: 1.1,
   },
 };
 

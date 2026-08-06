@@ -328,13 +328,27 @@ Handled in code — worth knowing before changing layout:
   API support rather than about the hardware.
 - **Narrow-viewport crop correction** (`CAMERA_SETTINGS.narrowCrop`):
   `distanceScale` is a deliberately tight crop that a wide desktop absorbs but
-  a narrow viewport does not. Measured across 16 viewports, the side-on beats
-  ran 2–11% of the model past the screen edge. Counterintuitively the worst
-  case is a **square** viewport, not the narrowest one — below aspect 1 the
-  auto-framing starts widening on its own as the horizontal fov closes in,
-  while above it there is spare width. So the correction ramps in from aspect
-  1.3 and is at full strength by 1.0. Landscape desktop framing is bit-for-bit
-  unchanged.
+  a narrow viewport does not. Measured, the side-on beats ran 2–11% of the
+  model past the screen edge on every phone — cutting off the appliance's nose
+  and tail.
+
+  Counterintuitively the worst case is a **square** viewport, not the narrowest
+  one: below aspect 1 the auto-framing starts widening on its own as the
+  horizontal fov closes in, while above it there is spare width. So the
+  correction ramps in from aspect 1.3 and reaches full strength at 1.0, rather
+  than starting at portrait.
+
+  It pulls back to `minScale: 1.1` — past the auto-framed fit on purpose.
+  Merely *not clipping* still looked edge-to-edge (about 4% of space around the
+  model); 1.1 leaves **~16%**, against ~21% on a landscape desktop. Because
+  `framedRadius()` already folds in the viewport's aspect, that single value
+  yields the same relative margin on every handset, pulling a narrower phone
+  further back in world units automatically.
+
+  Verified: 9/9 viewports from 360×800 to 2560×1080 keep the whole model on
+  screen with real margin at every beat, the ramp is continuous (halving the
+  sample interval halves the step, so there is no pop when a device rotates),
+  and landscape desktop is untouched at exactly 0.85.
 - **Adaptive resolution**: on top of that, a closed loop measures real frame
   times and scales resolution until `QUALITY.targetFps` holds. Pixel ratio is
   the biggest lever on phones — fragment work dominates on tile-based GPUs and

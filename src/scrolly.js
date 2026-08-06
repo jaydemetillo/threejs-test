@@ -4,7 +4,7 @@ import { CameraRig } from './cameraRig.js';
 import { Highlighter } from './highlights.js';
 import { PostFX } from './postfx.js';
 import { AdaptiveQuality } from './quality.js';
-import { STEPS, MOTION, QUALITY } from './sections.js';
+import { STEPS, MOTION, QUALITY, CAMERA_SETTINGS } from './sections.js';
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -167,5 +167,8 @@ export function initScrolly(scene3d) {
     // The tuner's device preview resizes the sticky stage, which invalidates
     // every trigger's cached start/end — it needs this to recompute them.
     ScrollTrigger,
+    // Live config, so the verification scripts can sweep framing settings
+    // without a rebuild. The rig re-reads it every frame.
+    CAMERA_SETTINGS,
   };
 }
