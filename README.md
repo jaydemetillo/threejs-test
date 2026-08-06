@@ -89,7 +89,9 @@ npm run dev
 # then open http://localhost:5173/?tune
 ```
 
-A panel appears top-right:
+A panel appears top-right. **–** in its header collapses it to a title pill
+(**+** brings it back), which is the quickest way to check a framing without
+the panel covering it. Every section below the header is a collapsible group.
 
 1. Scroll to the beat you want, tick **Freeze scroll sequencing** so the
    camera and highlight hold still.
@@ -124,6 +126,25 @@ Two details that matter when capturing keyframes:
 
 With free look on, a bare drag orbits, so shift-click (not plain click) places
 the highlight.
+
+**Model on canvas** — the `Model X` / `Model Y` sliders in the same panel move
+the model *within the frame* without touching the orbit, which is how you keep
+the subject clear of the story card. `Distance` is the global crop
+(`distanceScale`). **Copy CAMERA_SETTINGS** writes all three out.
+
+The offset is a fraction of the viewport, so it frames the same on a phone and
+a monitor, and it is applied as a **camera truck** — camera and look target
+move together, perpendicular to the view. That is what holds the model at one
+spot on screen at *every* azimuth. Translating the model in world space
+instead would make it swim across the frame as the camera orbits: pushed right
+at the front, centered from the side, pushed left from the back. Because only
+the camera moves, the model, its bounding box and the highlight uniforms are
+all untouched, so a framing offset can never desync the highlight.
+
+One consequence worth knowing: trucking a perspective camera introduces
+parallax, so at large offsets the model is seen slightly more side-on. That is
+real camera behaviour, not a bug — keep offsets modest if you want the framing
+dead neutral.
 
 **Post FX** tunes bloom and vignette live — the same sliders the shipped look
 is built from — and emits a ready-to-paste `POSTFX` block. `enabled` and

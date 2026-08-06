@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { FreeLook } from './cameraControls.js';
 import { TIER_PROFILE } from './quality.js';
-import { POSTFX } from './sections.js';
+import { POSTFX, CAMERA_SETTINGS } from './sections.js';
 
 /**
  * DEV-ONLY visual tuner. Loaded only when the page URL contains ?tune
@@ -61,7 +61,10 @@ export function initTuner() {
   // ------------------------------------------------------------- free-look rig
   // Suspends the scroll rig while active so the two never fight over
   // camera.position; see src/cameraControls.js.
-  const freeLook = new FreeLook(scene3d, control);
+  const freeLook = new FreeLook(scene3d, control, rig);
+  // Expose it alongside the rest of the debug handle, so the free-look rig can
+  // be driven from the console (and from the verification scripts).
+  dbg.freeLook = freeLook;
   control.onFrame = (dt) => {
     if (freeLook.enabled && freeLook.update(dt)) render();
   };
@@ -105,7 +108,16 @@ export function initTuner() {
         backdrop-filter: blur(8px);
       }
       .tuner h2 { font-size: 11px; letter-spacing: .12em; text-transform: uppercase;
-        color: #2fbf71; margin: 0 0 8px; }
+        color: #2fbf71; margin: 0; }
+      /* Header stays put when the body is collapsed away. */
+      .tuner__bar { display: flex; align-items: center; justify-content: space-between;
+        gap: 10px; margin-bottom: 8px; }
+      .tuner__bar button { flex: 0 0 22px; width: 22px; height: 22px; padding: 0;
+        font-size: 15px; line-height: 1; display: flex; align-items: center;
+        justify-content: center; }
+      .tuner.is-min { width: auto; }
+      .tuner.is-min .tuner__bar { margin-bottom: 0; }
+      .tuner.is-min .tuner__body { display: none; }
       .tuner details { border-top: 1px solid #26292f; margin-top: 10px; }
       .tuner details[open] { padding-bottom: 4px; }
       .tuner summary { font-size: 10px; letter-spacing: .1em; text-transform: uppercase;
@@ -145,8 +157,12 @@ export function initTuner() {
       .tuner .stats dd.bad { color: #e8733f; }
     </style>
 
-    <h2>Highlight tuner</h2>
+    <div class="tuner__bar">
+      <h2>Three.js tuner</h2>
+      <button id="tn-min" title="Minimize panel" aria-label="Minimize panel">–</button>
+    </div>
 
+    <div class="tuner__body">
     <select id="tn-step"></select>
     <label class="check"><input type="checkbox" id="tn-place" checked>
       Click model to place green</label>
@@ -196,6 +212,20 @@ export function initTuner() {
       <p class="hint">Scroll the page to pick <b>p</b>, free-look to pick the
         angle, then copy. The azimuth is unwrapped to continue the existing
         track rather than snapping back through 0°.</p>
+
+      <span style="font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#8b8f98">Model on canvas</span>
+      <label><span>Model X</span><input type="range" id="tn-fox" min="-0.5" max="0.5" step="0.01"><span class="val" id="tn-fox-v"></span></label>
+      <label><span>Model Y</span><input type="range" id="tn-foy" min="-0.5" max="0.5" step="0.01"><span class="val" id="tn-foy-v"></span></label>
+      <label><span>Distance</span><input type="range" id="tn-dist" min="0.5" max="1.6" step="0.01"><span class="val" id="tn-dist-v"></span></label>
+      <pre id="tn-camset"></pre>
+      <div class="row" style="margin-top:6px">
+        <button id="tn-framereset">Reset framing</button>
+        <button id="tn-camsetcopy">Copy CAMERA_SETTINGS</button>
+      </div>
+      <p class="hint">Moves the model around the canvas without changing the
+        orbit — as a fraction of the viewport, so it frames the same on any
+        screen. It holds the same spot at every angle, which a world-space
+        nudge would not.</p>
     </details>
 
     <details>
@@ -251,6 +281,7 @@ export function initTuner() {
       <pre id="tn-look"></pre>
       <button id="tn-lookcopy">Copy HIGHLIGHT block</button>
     </details>
+    </div>
   `;
   document.body.appendChild(panel);
 
@@ -369,12 +400,64 @@ export function initTuner() {
     setColor(v, hexEl);
   });
 
+  // ---------------------------------------------------------------- minimize
+  const minBtn = $('tn-min');
+  minBtn.addEventListener('click', () => {
+    const min = panel.classList.toggle('is-min');
+    minBtn.textContent = min ? '+' : '–';
+    minBtn.title = minBtn.ariaLabel = min ? 'Expand panel' : 'Minimize panel';
+  });
+
   // ------------------------------------------------------------------- camera
   $('tn-free').addEventListener('change', (e) => {
     freeLook.setEnabled(e.target.checked);
     updateCamera();
   });
   $('tn-recenter').addEventListener('click', () => freeLook.recenter());
+
+  // Framing: writes straight into the live CAMERA_SETTINGS object, which the
+  // rig re-reads every frame — so there is nothing to re-apply.
+  const camSetOut = $('tn-camset');
+  function refreshCamSet() {
+    const [x, y] = CAMERA_SETTINGS.framingOffset;
+    camSetOut.textContent =
+      `export const CAMERA_SETTINGS = {\n` +
+      `  distanceScale: ${CAMERA_SETTINGS.distanceScale.toFixed(2)},\n` +
+      `  framingOffset: [${x.toFixed(2)}, ${y.toFixed(2)}],\n` +
+      `};`;
+  }
+  const framing = [
+    ['tn-fox', (v) => { CAMERA_SETTINGS.framingOffset[0] = v; }, () => CAMERA_SETTINGS.framingOffset[0]],
+    ['tn-foy', (v) => { CAMERA_SETTINGS.framingOffset[1] = v; }, () => CAMERA_SETTINGS.framingOffset[1]],
+    ['tn-dist', (v) => { CAMERA_SETTINGS.distanceScale = v; }, () => CAMERA_SETTINGS.distanceScale],
+  ];
+  for (const [id, apply, initial] of framing) {
+    const el = $(id);
+    el.value = initial();
+    $(`${id}-v`).textContent = (+el.value).toFixed(2);
+    el.addEventListener('input', () => {
+      apply(+el.value);
+      $(`${id}-v`).textContent = (+el.value).toFixed(2);
+      refreshCamSet();
+      // Free-look owns the camera outright, so the rig won't re-apply framing
+      // until it is switched back off.
+      if (!freeLook.enabled) rig.update(1 / 60);
+      render();
+    });
+  }
+  $('tn-framereset').addEventListener('click', () => {
+    CAMERA_SETTINGS.framingOffset[0] = 0;
+    CAMERA_SETTINGS.framingOffset[1] = 0;
+    for (const [id, , initial] of framing) {
+      $(id).value = initial();
+      $(`${id}-v`).textContent = (+$(id).value).toFixed(2);
+    }
+    refreshCamSet();
+    if (!freeLook.enabled) rig.update(1 / 60);
+    render();
+  });
+  $('tn-camsetcopy').addEventListener('click', () =>
+    copy(camSetOut.textContent, $('tn-camsetcopy'), 'Copy CAMERA_SETTINGS'));
 
   // ------------------------------------------------------------------ post fx
   const fxOut = $('tn-fxout');
@@ -536,6 +619,7 @@ export function initTuner() {
   refreshInputs();
   refreshLookOut();
   refreshFxOut();
+  refreshCamSet();
   updateCamera();
   refreshStats();
   syncScene();

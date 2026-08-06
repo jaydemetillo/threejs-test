@@ -51,6 +51,22 @@ export const CAMERA_SETTINGS = {
   // model with margin; lower = closer crop. Kept moderate — very close crops
   // magnify the scanned mesh's surface noise.
   distanceScale: 0.85,
+
+  /**
+   * Where the model sits ON THE CANVAS, without changing the orbit angle.
+   * [x, y] as a fraction of the viewport: [0.15, 0] puts it 15% of the
+   * viewport width right of center, [0, -0.1] drops it 10% of the height.
+   * Useful for keeping the subject clear of the story card.
+   *
+   * Implemented as a camera truck — the camera and its look target move
+   * together, perpendicular to the view — so the model holds the SAME spot on
+   * screen at every azimuth. Translating the model in world space instead
+   * would make it swim across the frame as the camera orbits: pushed right at
+   * the front, centered from the side, pushed left from the back. Because
+   * both ends of the view move by the same vector, the framing shifts but
+   * nothing about the orbit, the distance or the highlight math changes.
+   */
+  framingOffset: [0, 0],
 };
 
 export const CAMERA_KEYFRAMES = [

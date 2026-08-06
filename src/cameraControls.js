@@ -25,9 +25,13 @@ CameraControls.install({
  * so the two never fight over camera.position.
  */
 export class FreeLook {
-  constructor(scene3d, control) {
+  constructor(scene3d, control, rig) {
     this.scene3d = scene3d;
     this.control = control;
+    // The rig's look target is the orbit center. It is the origin normally,
+    // but CAMERA_SETTINGS.framingOffset trucks it off-center — so every
+    // reference below goes through it rather than assuming (0,0,0).
+    this.rig = rig;
     this.enabled = false;
 
     this.controls = new CameraControls(scene3d.camera, scene3d.canvas);
@@ -46,7 +50,13 @@ export class FreeLook {
     this.controls.minPolarAngle = MathUtils.degToRad(4);
     this.controls.maxPolarAngle = MathUtils.degToRad(160);
 
-    this.controls.setTarget(0, 0, 0, false);
+    const c = this.orbitCenter();
+    this.controls.setTarget(c.x, c.y, c.z, false);
+  }
+
+  /** Where the rig orbits around — origin, plus any framing offset. */
+  orbitCenter() {
+    return this.rig.lookTarget;
   }
 
   setEnabled(on) {
@@ -54,26 +64,29 @@ export class FreeLook {
     this.controls.enabled = on;
     this.control.suspendCamera = on;
     if (on) {
-      // Adopt whatever the rig was showing, so enabling free-look never jumps.
+      // Adopt exactly what the rig was showing — same eye, same target — so
+      // enabling free-look never jumps, framing offset included.
       const p = this.scene3d.camera.position;
-      this.controls.setLookAt(p.x, p.y, p.z, 0, 0, 0, false);
+      const c = this.orbitCenter();
+      this.controls.setLookAt(p.x, p.y, p.z, c.x, c.y, c.z, false);
     }
   }
 
-  /** Snap the orbit target back to the model center (the rig's invariant). */
+  /** Snap the orbit target back to the rig's center (the rig's invariant). */
   recenter() {
-    this.controls.setTarget(0, 0, 0, true);
+    const c = this.orbitCenter();
+    this.controls.setTarget(c.x, c.y, c.z, true);
   }
 
   /**
-   * How far the orbit target has drifted off the origin, as a fraction of the
-   * model radius. Truck/pan moves the target, and any keyframe captured with a
-   * drifted target will not reproduce under the rig — which always looks at
-   * the origin. The tuner surfaces this as a warning.
+   * How far the orbit target has drifted from the rig's own center, as a
+   * fraction of the model radius. Truck/pan moves the target, and a keyframe
+   * captured with a drifted target will not reproduce — the rig only ever
+   * looks at its center. The tuner surfaces this as a warning.
    */
   targetDrift() {
     const t = this.controls.getTarget(new Vector3());
-    return t.length() / this.scene3d.boundingRadius;
+    return t.sub(this.orbitCenter()).length() / this.scene3d.boundingRadius;
   }
 
   /**
@@ -90,7 +103,11 @@ export class FreeLook {
    * rig's current azimuth picks the co-terminal angle nearest to it.
    */
   toKeyframe(refAzimuth = null) {
-    const p = this.scene3d.camera.position;
+    // Measure from the orbit target, not the world origin: with a framing
+    // offset (or a trucked target) the camera is no longer on a sphere around
+    // (0,0,0), and |position| would read as a bogus radius.
+    const t = this.controls.getTarget(new Vector3());
+    const p = this.scene3d.camera.position.clone().sub(t);
     const radius = p.length();
     const polar = MathUtils.radToDeg(Math.asin(MathUtils.clamp(p.y / radius, -1, 1)));
     let azimuth = MathUtils.radToDeg(Math.atan2(p.x, p.z));

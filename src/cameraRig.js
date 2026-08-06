@@ -3,6 +3,11 @@ import { CAMERA_KEYFRAMES, CAMERA_SETTINGS, MOTION } from './sections.js';
 
 const deg = THREE.MathUtils.degToRad;
 
+// Scratch vectors for the framing offset — reused so update() stays allocation
+// free at 60fps.
+const _right = new THREE.Vector3();
+const _up = new THREE.Vector3();
+
 /** Hermite smoothstep — eases every keyframe segment so dwells feel settled
  *  and sweeps accelerate/decelerate like a camera operator, not a lerp. */
 const smoothstep = (t) => t * t * (3 - 2 * t);
@@ -74,6 +79,44 @@ export class CameraRig {
       radius * Math.sin(pol),
       radius * Math.cos(az) * Math.cos(pol)
     );
+
+    // Point at the model center first: the framing offset below is strictly
+    // perpendicular to the view, so it never changes where the camera aims.
+    cam.lookAt(0, 0, 0);
+    this.applyFramingOffset(radius);
     cam.lookAt(this.lookTarget);
+  }
+
+  /**
+   * Slide the model around the canvas without touching the orbit.
+   *
+   * Moves the camera AND its look target by the same screen-aligned vector, so
+   * the view direction is unchanged and the whole scene — model, highlight box
+   * and contact shadow alike — shifts together on screen. Working from the
+   * camera's own right/up axes (rather than world axes) is what keeps the
+   * model at a fixed spot in frame as the rig orbits around it.
+   *
+   * The offset is a fraction of the VIEWPORT, converted to world units from
+   * the fov and the current distance, so the same config frames identically on
+   * a phone and a widescreen monitor.
+   */
+  applyFramingOffset(radius) {
+    const [fx, fy] = CAMERA_SETTINGS.framingOffset;
+    const cam = this.scene3d.camera;
+
+    if (!fx && !fy) {
+      this.lookTarget.set(0, 0, 0);
+      return;
+    }
+
+    cam.updateMatrixWorld();
+    const halfH = radius * Math.tan(deg(cam.fov) / 2);
+    const halfW = halfH * cam.aspect;
+    // Negated: to push the model right on screen, the camera trucks left.
+    _right.setFromMatrixColumn(cam.matrixWorld, 0).multiplyScalar(-fx * 2 * halfW);
+    _up.setFromMatrixColumn(cam.matrixWorld, 1).multiplyScalar(-fy * 2 * halfH);
+
+    this.lookTarget.copy(_right).add(_up);
+    cam.position.add(this.lookTarget);
   }
 }
