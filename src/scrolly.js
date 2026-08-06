@@ -2,7 +2,9 @@ import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { CameraRig } from './cameraRig.js';
 import { Highlighter } from './highlights.js';
-import { STEPS, MOTION } from './sections.js';
+import { PostFX } from './postfx.js';
+import { AdaptiveQuality } from './quality.js';
+import { STEPS, MOTION, QUALITY } from './sections.js';
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -39,6 +41,12 @@ export function initScrolly(scene3d) {
 
   const rig = new CameraRig(scene3d);
   const highlighter = new Highlighter(scene3d);
+
+  // Post-processing is built after the materials exist, so the composer's
+  // first compile sees the highlight-patched shaders.
+  const postfx = new PostFX(scene3d, scene3d.tier);
+  scene3d.attachPostFX(postfx);
+  const quality = new AdaptiveQuality(scene3d, scene3d.tier);
 
   // Main scrub: section progress -> camera target progress.
   ScrollTrigger.create({
@@ -78,11 +86,25 @@ export function initScrolly(scene3d) {
     { rootMargin: '60% 0px 60% 0px' }
   ).observe(section);
 
+  // ...and not at all while the tab is backgrounded. The observer above only
+  // knows about scroll position; a backgrounded tab still fires rAF on some
+  // platforms, which is pure battery drain on a phone.
+  let hidden = false;
+  if (QUALITY.pauseWhenHidden) {
+    document.addEventListener('visibilitychange', () => {
+      hidden = document.hidden;
+      last = performance.now(); // don't bill the away-time to the next frame
+    });
+  }
+
   // Story-beat sequencing runs off the *damped* progress, so cards and
   // highlights land exactly when the camera arrives, not when the wheel does.
   // `suspend` lets the tuner (src/tuner.js) take over region control.
   let activeCardId = null;
-  const control = { suspendStepSync: false };
+  // suspendStepSync: tuner owns the highlight region.
+  // suspendCamera:   tuner's free-look owns camera.position.
+  // onFrame:         per-frame hook for tuner-side controls that need dt.
+  const control = { suspendStepSync: false, suspendCamera: false, onFrame: null };
   function syncStep(progress) {
     if (control.suspendStepSync) return;
     const step = STEPS.find((s) => progress >= s.start && progress < s.end) || null;
@@ -122,10 +144,13 @@ export function initScrolly(scene3d) {
   function tick(now) {
     const dt = Math.min((now - last) / 1000, 0.05);
     last = now;
-    if (visible) {
-      rig.update(dt);
+    if (visible && !hidden) {
+      // Free-look (tuner) takes the camera over; otherwise the scroll rig has it.
+      if (!control.suspendCamera) rig.update(dt);
+      if (control.onFrame) control.onFrame(dt);
       syncStep(rig.progress);
-      scene3d.render();
+      quality.update(dt);
+      scene3d.render(dt);
     }
     requestAnimationFrame(tick);
   }
@@ -133,9 +158,11 @@ export function initScrolly(scene3d) {
 
   // Prime the very first frame so the stage isn't blank pre-scroll.
   rig.update(1 / 60);
-  scene3d.render();
+  scene3d.render(1 / 60);
 
   // Debug/tuning handle (also used by the headless verification script and,
   // when the page is loaded with ?tune, by src/tuner.js).
-  window.__scrolly = { rig, highlighter, scene3d, gsap, steps: STEPS, control };
+  window.__scrolly = {
+    rig, highlighter, scene3d, gsap, steps: STEPS, control, postfx, quality,
+  };
 }

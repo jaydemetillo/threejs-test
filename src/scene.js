@@ -2,6 +2,9 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { MODEL_URL, MODEL_TRANSFORM, RENDER_MODE, CLAY } from './sections.js';
+import {
+  detectDeviceTier, resolvePixelRatio, TIER_PROFILE, postFXWanted,
+} from './quality.js';
 
 /**
  * Re-attaches textures that GLTFLoader failed to load under a strict
@@ -97,13 +100,28 @@ export class Scene3D {
   constructor(canvas) {
     this.canvas = canvas;
 
+    // One-time capability guess; drives pixel-ratio ceiling, MSAA and whether
+    // post-processing runs at all. The adaptive loop refines it from there.
+    this.tier = detectDeviceTier();
+    this.pixelRatioScale = 1;
+    this.postfx = null;
+
     this.renderer = new THREE.WebGLRenderer({
       canvas,
-      antialias: true,
+      // Skipped when the composer will run — it renders to its own buffers
+      // (with its own MSAA), so a multisampled default framebuffer would be
+      // allocated and never used.
+      antialias: TIER_PROFILE[this.tier].antialias && !postFXWanted(this.tier),
       alpha: true,
       powerPreference: 'high-performance',
     });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.setPixelRatio(resolvePixelRatio(this.tier));
+    // Accumulate render stats per FRAME rather than per render() call. The
+    // composer issues several passes, and with the default autoReset the
+    // counters would only ever show the last one — a fullscreen triangle —
+    // which makes the tuner's draw-call/triangle readout useless exactly when
+    // post-processing is on. render() resets them explicitly instead.
+    this.renderer.info.autoReset = false;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.05;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -259,15 +277,34 @@ export class Scene3D {
     );
   }
 
+  /** Attach the post-processing chain; render() starts routing through it. */
+  attachPostFX(postfx) {
+    this.postfx = postfx;
+  }
+
+  /**
+   * Set the renderer's pixel ratio from the tier ceiling times an adaptive
+   * scale. Split out from resize() because the adaptive loop changes the
+   * scale without the canvas ever changing size.
+   */
+  applyPixelRatio(tier = this.tier, scale = this.pixelRatioScale) {
+    this.pixelRatioScale = scale;
+    this.renderer.setPixelRatio(resolvePixelRatio(tier, scale));
+    // The composer's buffers are sized off the drawing buffer, so they have
+    // to be rebuilt whenever the ratio moves.
+    if (this.postfx) this.postfx.resize();
+  }
+
   resize() {
     const w = this.canvas.clientWidth || window.innerWidth;
     const h = this.canvas.clientHeight || window.innerHeight;
     // Re-clamp every resize: devicePixelRatio changes when a phone rotates,
     // the browser zooms, or the window moves between screens.
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.setPixelRatio(resolvePixelRatio(this.tier, this.pixelRatioScale));
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
+    if (this.postfx) this.postfx.resize();
   }
 
   /**
@@ -281,7 +318,9 @@ export class Scene3D {
     return (this.boundingRadius / Math.sin(fit / 2)) * 1.06;
   }
 
-  render() {
-    this.renderer.render(this.scene, this.camera);
+  render(dt = 0) {
+    this.renderer.info.reset();
+    if (this.postfx && this.postfx.active) this.postfx.render(dt);
+    else this.renderer.render(this.scene, this.camera);
   }
 }

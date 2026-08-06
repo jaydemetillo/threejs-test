@@ -125,6 +125,61 @@ export const HIGHLIGHT = {
   edgeFeather: 0.1,
 };
 
+/**
+ * Post-processing (src/postfx.js). The bloom is thresholded, so it only picks
+ * up the emissive boost the highlight shader adds to the focused region —
+ * below the threshold the clay render is untouched. Set `intensity: 0` to
+ * keep the chain alive but invisible; set `enabled: false` to skip it wholly.
+ *
+ * enabled: 'auto' runs it on the mid/high device tiers and skips it on low
+ *          (see TIER_PROFILE in quality.js). true/false force the decision.
+ */
+export const POSTFX = {
+  enabled: 'auto',
+  // MSAA samples for the composer's buffers. Clamped down by device tier;
+  // 0 disables it. This replaces the renderer's own antialias when the
+  // composer is active, which is why it is not simply left at 0.
+  multisampling: 4,
+  bloom: {
+    intensity: 0.85,
+    // Raise to bloom less of the model, lower to bloom more. The clay body
+    // sits well under 0.7 after tone mapping; the highlight's glow exceeds it.
+    luminanceThreshold: 0.72,
+    luminanceSmoothing: 0.08,
+    radius: 0.72,
+  },
+  vignette: {
+    offset: 0.32,
+    darkness: 0.42,
+  },
+};
+
+/**
+ * Mobile / performance budget (src/quality.js).
+ *
+ * Pixel ratio is the single biggest lever on phones: fragment shading
+ * dominates on tile-based GPUs and scales with pixel count, so a 3x-DPR
+ * phone rendering at 1.25 is doing ~6x less fragment work than at 3.
+ * `adaptive` adds a closed loop on top — it measures real frame times and
+ * scales resolution until the target framerate holds, which also covers
+ * thermal throttling that no static device check can predict.
+ */
+export const QUALITY = {
+  // Hard ceiling across all tiers; the per-tier caps in quality.js can only
+  // lower it further. Above 2 there is essentially nothing left to see.
+  maxPixelRatio: 2,
+  // Floor for the adaptive loop, as an absolute pixel ratio.
+  minPixelRatio: 0.75,
+  adaptive: true,
+  targetFps: 50,
+  // Lowest multiplier the adaptive loop may apply to the tier's cap.
+  minScale: 0.6,
+  // Stop rendering entirely when the tab is backgrounded. The
+  // IntersectionObserver in scrolly.js already handles off-screen; this
+  // covers tab switches, which on mobile is where the battery actually goes.
+  pauseWhenHidden: true,
+};
+
 // Overridable so single-file/preview builds can inject a data: URI or CDN URL.
 export const MODEL_URL =
   (typeof window !== 'undefined' && window.__MODEL_URL) || '/models/model.glb';

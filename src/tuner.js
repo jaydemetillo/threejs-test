@@ -1,24 +1,30 @@
 import * as THREE from 'three';
+import { FreeLook } from './cameraControls.js';
+import { TIER_PROFILE } from './quality.js';
+import { POSTFX } from './sections.js';
 
 /**
  * DEV-ONLY visual tuner. Loaded only when the page URL contains ?tune
- * (see src/main.js), so none of this ships in the normal bundle.
+ * (see src/main.js), so none of this ships in the normal bundle — and neither
+ * does camera-controls, which is imported only from here.
  *
  * What it gives you:
- *   - click anywhere on the model to move the green highlight there
+ *   - click anywhere on the model to move the highlight there
  *   - sliders for the highlight box size, edge softness and look
  *   - a wireframe outline showing exactly where the box is
- *   - a live camera readout + "capture keyframe"
+ *   - free-look orbit (camera-controls) that inverts back into a keyframe line
+ *   - live bloom / vignette controls
+ *   - a performance HUD with adaptive-resolution state and a tier preview
  *   - copy-paste-ready snippets for src/sections.js
  *
- * It edits the running scene directly; nothing is persisted. When a placement
+ * It edits the running scene directly; nothing is persisted. When something
  * looks right, copy the snippet into src/sections.js to make it permanent.
  */
 export function initTuner() {
   const dbg = window.__scrolly;
   if (!dbg) return;
 
-  const { scene3d, highlighter, rig, steps, control } = dbg;
+  const { scene3d, highlighter, rig, steps, control, postfx, quality } = dbg;
   const bounds = scene3d.bounds;
   const size = bounds.getSize(new THREE.Vector3());
 
@@ -52,9 +58,19 @@ export function initTuner() {
     render();
   }
 
+  // ------------------------------------------------------------- free-look rig
+  // Suspends the scroll rig while active so the two never fight over
+  // camera.position; see src/cameraControls.js.
+  const freeLook = new FreeLook(scene3d, control);
+  control.onFrame = (dt) => {
+    if (freeLook.enabled && freeLook.update(dt)) render();
+  };
+
   // ------------------------------------------------------------- click-to-place
   const raycaster = new THREE.Raycaster();
   scene3d.canvas.addEventListener('pointerdown', (e) => {
+    // With free-look on, a bare drag is an orbit — require shift to place.
+    if (freeLook.enabled && !e.shiftKey) return;
     if (!e.shiftKey && !placeMode.checked) return;
     const rect = scene3d.canvas.getBoundingClientRect();
     const ndc = new THREE.Vector2(
@@ -82,7 +98,7 @@ export function initTuner() {
     <style>
       .tuner {
         position: fixed; top: 12px; right: 12px; z-index: 9999;
-        width: 290px; max-height: calc(100vh - 24px); overflow-y: auto;
+        width: 296px; max-height: calc(100vh - 24px); overflow-y: auto;
         background: rgba(18, 20, 24, 0.94); color: #e8e8ea;
         font: 12px/1.45 -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
         border: 1px solid #33363d; border-radius: 8px; padding: 12px 13px 14px;
@@ -90,8 +106,14 @@ export function initTuner() {
       }
       .tuner h2 { font-size: 11px; letter-spacing: .12em; text-transform: uppercase;
         color: #2fbf71; margin: 0 0 8px; }
-      .tuner h3 { font-size: 10px; letter-spacing: .1em; text-transform: uppercase;
-        color: #8b8f98; margin: 14px 0 6px; font-weight: 600; }
+      .tuner details { border-top: 1px solid #26292f; margin-top: 10px; }
+      .tuner details[open] { padding-bottom: 4px; }
+      .tuner summary { font-size: 10px; letter-spacing: .1em; text-transform: uppercase;
+        color: #8b8f98; margin: 10px 0 6px; font-weight: 600; cursor: pointer;
+        list-style: none; display: flex; align-items: center; gap: 6px; }
+      .tuner summary::-webkit-details-marker { display: none; }
+      .tuner summary::before { content: '▸'; font-size: 9px; transition: transform .15s; }
+      .tuner details[open] > summary::before { transform: rotate(90deg); }
       .tuner label { display: flex; align-items: center; gap: 8px; margin: 5px 0; }
       .tuner label span:first-child { flex: 0 0 62px; color: #b9bcc3; }
       .tuner input[type=range] { flex: 1; min-width: 0; accent-color: #2fbf71; }
@@ -102,6 +124,7 @@ export function initTuner() {
         border-radius: 5px; padding: 6px 8px; font: inherit; cursor: pointer;
       }
       .tuner button:hover { background: #2c3038; border-color: #2fbf71; }
+      .tuner button:disabled { opacity: .45; cursor: not-allowed; }
       .tuner .row { display: flex; gap: 6px; }
       .tuner .check { display: flex; align-items: center; gap: 7px; margin: 7px 0;
         color: #b9bcc3; cursor: pointer; }
@@ -112,6 +135,14 @@ export function initTuner() {
       }
       .tuner .hint { color: #7d818a; font-size: 10.5px; margin: 6px 0 0; }
       .tuner .ok { color: #2fbf71; }
+      .tuner .warn { color: #e8b339; font-size: 10.5px; margin: 6px 0 0; }
+      .tuner .stats { display: grid; grid-template-columns: 1fr auto; gap: 1px 8px;
+        font-size: 11px; margin: 4px 0 0; }
+      .tuner .stats dt { color: #8b8f98; }
+      .tuner .stats dd { margin: 0; text-align: right; color: #e8e8ea;
+        font-variant-numeric: tabular-nums; }
+      .tuner .stats dd.good { color: #2fbf71; }
+      .tuner .stats dd.bad { color: #e8733f; }
     </style>
 
     <h2>Highlight tuner</h2>
@@ -124,40 +155,102 @@ export function initTuner() {
     <label class="check"><input type="checkbox" id="tn-wire" checked>
       Show box outline</label>
 
-    <h3>Box size</h3>
-    <label><span>Width</span><input type="range" id="tn-sx" min="0.02" max="1.2" step="0.01"><span class="val" id="tn-sx-v"></span></label>
-    <label><span>Height</span><input type="range" id="tn-sy" min="0.02" max="1.2" step="0.01"><span class="val" id="tn-sy-v"></span></label>
-    <label><span>Depth</span><input type="range" id="tn-sz" min="0.02" max="1.2" step="0.01"><span class="val" id="tn-sz-v"></span></label>
+    <details open>
+      <summary>Box size</summary>
+      <label><span>Width</span><input type="range" id="tn-sx" min="0.02" max="1.2" step="0.01"><span class="val" id="tn-sx-v"></span></label>
+      <label><span>Height</span><input type="range" id="tn-sy" min="0.02" max="1.2" step="0.01"><span class="val" id="tn-sy-v"></span></label>
+      <label><span>Depth</span><input type="range" id="tn-sz" min="0.02" max="1.2" step="0.01"><span class="val" id="tn-sz-v"></span></label>
+    </details>
 
-    <h3>Position (or just click the model)</h3>
-    <label><span>Left/right</span><input type="range" id="tn-cx" min="0" max="1" step="0.01"><span class="val" id="tn-cx-v"></span></label>
-    <label><span>Up/down</span><input type="range" id="tn-cy" min="0" max="1" step="0.01"><span class="val" id="tn-cy-v"></span></label>
-    <label><span>Front/back</span><input type="range" id="tn-cz" min="0" max="1" step="0.01"><span class="val" id="tn-cz-v"></span></label>
+    <details open>
+      <summary>Position (or click the model)</summary>
+      <label><span>Left/right</span><input type="range" id="tn-cx" min="0" max="1" step="0.01"><span class="val" id="tn-cx-v"></span></label>
+      <label><span>Up/down</span><input type="range" id="tn-cy" min="0" max="1" step="0.01"><span class="val" id="tn-cy-v"></span></label>
+      <label><span>Front/back</span><input type="range" id="tn-cz" min="0" max="1" step="0.01"><span class="val" id="tn-cz-v"></span></label>
+    </details>
 
-    <h3>Look</h3>
-    <label><span>Color</span>
-      <input type="color" id="tn-color" style="flex:0 0 34px;height:24px;padding:1px;border:1px solid #3a3e46;border-radius:4px;background:#23262c;cursor:pointer">
-      <input type="text" id="tn-hex" spellcheck="false" maxlength="7"
-        style="flex:1;min-width:0;background:#23262c;color:#e8e8ea;border:1px solid #3a3e46;border-radius:4px;padding:4px 6px;font:inherit;font-variant-numeric:tabular-nums">
-    </label>
-    <label><span>Opacity</span><input type="range" id="tn-opacity" min="0" max="100" step="1"><span class="val" id="tn-opacity-v"></span></label>
-    <label><span>Feather</span><input type="range" id="tn-feather" min="0" max="0.4" step="0.01"><span class="val" id="tn-feather-v"></span></label>
-    <label><span>Tint</span><input type="range" id="tn-tint" min="0" max="1" step="0.05"><span class="val" id="tn-tint-v"></span></label>
-    <label><span>Glow</span><input type="range" id="tn-glow" min="0" max="2.5" step="0.05"><span class="val" id="tn-glow-v"></span></label>
-    <label><span>Dim rest</span><input type="range" id="tn-dim" min="0" max="1" step="0.05"><span class="val" id="tn-dim-v"></span></label>
+    <details open>
+      <summary>Look</summary>
+      <label><span>Color</span>
+        <input type="color" id="tn-color" style="flex:0 0 34px;height:24px;padding:1px;border:1px solid #3a3e46;border-radius:4px;background:#23262c;cursor:pointer">
+        <input type="text" id="tn-hex" spellcheck="false" maxlength="7"
+          style="flex:1;min-width:0;background:#23262c;color:#e8e8ea;border:1px solid #3a3e46;border-radius:4px;padding:4px 6px;font:inherit;font-variant-numeric:tabular-nums">
+      </label>
+      <label><span>Opacity</span><input type="range" id="tn-opacity" min="0" max="100" step="1"><span class="val" id="tn-opacity-v"></span></label>
+      <label><span>Feather</span><input type="range" id="tn-feather" min="0" max="0.4" step="0.01"><span class="val" id="tn-feather-v"></span></label>
+      <label><span>Tint</span><input type="range" id="tn-tint" min="0" max="1" step="0.05"><span class="val" id="tn-tint-v"></span></label>
+      <label><span>Glow</span><input type="range" id="tn-glow" min="0" max="2.5" step="0.05"><span class="val" id="tn-glow-v"></span></label>
+      <label><span>Dim rest</span><input type="range" id="tn-dim" min="0" max="1" step="0.05"><span class="val" id="tn-dim-v"></span></label>
+    </details>
 
-    <h3>Paste into sections.js</h3>
-    <pre id="tn-out"></pre>
-    <button id="tn-copy">Copy region line</button>
-    <pre id="tn-look"></pre>
-    <button id="tn-lookcopy">Copy HIGHLIGHT block</button>
+    <details open>
+      <summary>Camera</summary>
+      <label class="check"><input type="checkbox" id="tn-free">
+        Free look (drag / scroll to orbit)</label>
+      <pre id="tn-cam"></pre>
+      <p class="warn" id="tn-drift" style="display:none"></p>
+      <div class="row" style="margin-top:6px">
+        <button id="tn-recenter">Recenter target</button>
+        <button id="tn-camcopy">Copy keyframe</button>
+      </div>
+      <p class="hint">Scroll the page to pick <b>p</b>, free-look to pick the
+        angle, then copy. The azimuth is unwrapped to continue the existing
+        track rather than snapping back through 0°.</p>
+    </details>
 
-    <h3>Camera here</h3>
-    <pre id="tn-cam"></pre>
-    <button id="tn-camcopy">Copy keyframe line</button>
+    <details>
+      <summary>Post FX</summary>
+      <div id="tn-fx-body">
+        <label class="check"><input type="checkbox" id="tn-fx-on">
+          Enable post-processing</label>
+        <label><span>Bloom</span><input type="range" id="tn-bloom" min="0" max="3" step="0.05"><span class="val" id="tn-bloom-v"></span></label>
+        <label><span>Threshold</span><input type="range" id="tn-thresh" min="0" max="1.2" step="0.01"><span class="val" id="tn-thresh-v"></span></label>
+        <label><span>Smoothing</span><input type="range" id="tn-smooth" min="0" max="0.5" step="0.01"><span class="val" id="tn-smooth-v"></span></label>
+        <label><span>Radius</span><input type="range" id="tn-radius" min="0" max="1" step="0.01"><span class="val" id="tn-radius-v"></span></label>
+        <label><span>Vig offset</span><input type="range" id="tn-vigo" min="0" max="1" step="0.01"><span class="val" id="tn-vigo-v"></span></label>
+        <label><span>Vig dark</span><input type="range" id="tn-vigd" min="0" max="1.5" step="0.01"><span class="val" id="tn-vigd-v"></span></label>
+        <pre id="tn-fxout"></pre>
+        <button id="tn-fxcopy">Copy POSTFX block</button>
+      </div>
+      <p class="hint" id="tn-fx-off" style="display:none">Post-processing is not
+        active on this device tier. Set <b>POSTFX.enabled = true</b> in
+        sections.js and reload to force it on.</p>
+    </details>
 
-    <p class="hint">Scroll the page to move the camera; the panel follows.
-      Shift-click also places the green.</p>
+    <details>
+      <summary>Performance</summary>
+      <dl class="stats">
+        <dt>FPS</dt><dd id="tn-fps">–</dd>
+        <dt>Frame</dt><dd id="tn-ms">–</dd>
+        <dt>Draw calls</dt><dd id="tn-calls">–</dd>
+        <dt>Triangles</dt><dd id="tn-tris">–</dd>
+        <dt>Programs</dt><dd id="tn-progs">–</dd>
+        <dt>Pixel ratio</dt><dd id="tn-dpr">–</dd>
+        <dt>Device tier</dt><dd id="tn-tier">–</dd>
+        <dt>Auto rescales</dt><dd id="tn-rescales">–</dd>
+      </dl>
+      <label class="check"><input type="checkbox" id="tn-adaptive" checked>
+        Adaptive resolution</label>
+      <label><span>Ratio</span><input type="range" id="tn-scale" min="0.4" max="1" step="0.05"><span class="val" id="tn-scale-v"></span></label>
+      <span style="font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#8b8f98">Preview tier</span>
+      <select id="tn-tiersel" style="margin-top:4px">
+        <option value="">— current —</option>
+        <option value="low">low (budget phone)</option>
+        <option value="mid">mid (good phone)</option>
+        <option value="high">high (desktop)</option>
+      </select>
+      <p class="hint">Preview applies that tier's pixel-ratio cap and post-FX
+        budget live. MSAA and the renderer's antialias are fixed at construction,
+        so reload to test those.</p>
+    </details>
+
+    <details open>
+      <summary>Paste into sections.js</summary>
+      <pre id="tn-out"></pre>
+      <button id="tn-copy">Copy region line</button>
+      <pre id="tn-look"></pre>
+      <button id="tn-lookcopy">Copy HIGHLIGHT block</button>
+    </details>
   `;
   document.body.appendChild(panel);
 
@@ -276,9 +369,126 @@ export function initTuner() {
     setColor(v, hexEl);
   });
 
+  // ------------------------------------------------------------------- camera
+  $('tn-free').addEventListener('change', (e) => {
+    freeLook.setEnabled(e.target.checked);
+    updateCamera();
+  });
+  $('tn-recenter').addEventListener('click', () => freeLook.recenter());
+
+  // ------------------------------------------------------------------ post fx
+  const fxOut = $('tn-fxout');
+  if (postfx && postfx.composer) {
+    const v = postfx.values();
+    const fx = [
+      ['tn-fx-on'],
+      ['tn-bloom', (x) => { postfx.bloomIntensity = x; }, v.intensity, 2],
+      ['tn-thresh', (x) => { postfx.bloomThreshold = x; }, v.luminanceThreshold, 2],
+      ['tn-smooth', (x) => { postfx.bloomSmoothing = x; }, v.luminanceSmoothing, 2],
+      ['tn-radius', (x) => { postfx.bloomRadius = x; }, v.radius, 2],
+      ['tn-vigo', (x) => { postfx.vignetteOffset = x; }, v.offset, 2],
+      ['tn-vigd', (x) => { postfx.vignetteDarkness = x; }, v.darkness, 2],
+    ];
+    for (const [id, apply, initial, decimals] of fx.slice(1)) {
+      const el = $(id);
+      el.value = initial;
+      $(`${id}-v`).textContent = (+el.value).toFixed(decimals);
+      el.addEventListener('input', () => {
+        apply(+el.value);
+        $(`${id}-v`).textContent = (+el.value).toFixed(decimals);
+        refreshFxOut();
+        render();
+      });
+    }
+    const onEl = $('tn-fx-on');
+    onEl.checked = postfx.active;
+    onEl.addEventListener('change', () => {
+      postfx.setEnabled(onEl.checked);
+      render();
+    });
+    $('tn-fxcopy').addEventListener('click', () =>
+      copy(fxOut.textContent, $('tn-fxcopy'), 'Copy POSTFX block'));
+  } else {
+    $('tn-fx-body').style.display = 'none';
+    $('tn-fx-off').style.display = '';
+  }
+
+  function refreshFxOut() {
+    if (!postfx || !postfx.composer) return;
+    const v = postfx.values();
+    const n = (x) => +x.toFixed(2);
+    // enabled/multisampling are not live-editable (they decide renderer
+    // construction), so echo what is actually configured rather than a guess.
+    const enabled = typeof POSTFX.enabled === 'string'
+      ? `'${POSTFX.enabled}'`
+      : String(POSTFX.enabled);
+    fxOut.textContent =
+      `export const POSTFX = {\n` +
+      `  enabled: ${enabled},\n` +
+      `  multisampling: ${POSTFX.multisampling},\n` +
+      `  bloom: {\n` +
+      `    intensity: ${n(v.intensity)},\n` +
+      `    luminanceThreshold: ${n(v.luminanceThreshold)},\n` +
+      `    luminanceSmoothing: ${n(v.luminanceSmoothing)},\n` +
+      `    radius: ${n(v.radius)},\n` +
+      `  },\n` +
+      `  vignette: { offset: ${n(v.offset)}, darkness: ${n(v.darkness)} },\n` +
+      `};`;
+  }
+
+  // -------------------------------------------------------------- performance
+  const scaleEl = $('tn-scale');
+  scaleEl.value = scene3d.pixelRatioScale;
+  $('tn-scale-v').textContent = (+scaleEl.value).toFixed(2);
+  scaleEl.addEventListener('input', () => {
+    // Manual override switches the closed loop off; the checkbox turns it back on.
+    quality.setScale(+scaleEl.value);
+    $('tn-adaptive').checked = false;
+    $('tn-scale-v').textContent = (+scaleEl.value).toFixed(2);
+    render();
+  });
+  $('tn-adaptive').addEventListener('change', (e) => {
+    if (e.target.checked) quality.resume();
+    else quality.enabled = false;
+  });
+  $('tn-tiersel').addEventListener('change', (e) => {
+    const tier = e.target.value;
+    if (!tier) {
+      scene3d.applyPixelRatio(scene3d.tier, 1);
+    } else {
+      scene3d.applyPixelRatio(tier, 1);
+      if (postfx && postfx.composer) {
+        postfx.setEnabled(TIER_PROFILE[tier].postfx);
+        $('tn-fx-on').checked = postfx.active;
+      }
+    }
+    render();
+  });
+
+  function refreshStats() {
+    const info = scene3d.renderer.info;
+    const fps = quality.fps;
+    const fpsEl = $('tn-fps');
+    fpsEl.textContent = fps ? fps.toFixed(0) : '–';
+    fpsEl.className = fps >= 50 ? 'good' : fps && fps < 30 ? 'bad' : '';
+    $('tn-ms').textContent = quality.frameMs ? quality.frameMs.toFixed(1) + ' ms' : '–';
+    $('tn-calls').textContent = info.render.calls;
+    $('tn-tris').textContent = info.render.triangles.toLocaleString();
+    $('tn-progs').textContent = info.programs ? info.programs.length : '–';
+    $('tn-dpr').textContent = scene3d.renderer.getPixelRatio().toFixed(2);
+    $('tn-tier').textContent = scene3d.tier;
+    $('tn-rescales').textContent = quality.changes;
+    // Mirror closed-loop changes back into the slider.
+    if (quality.enabled) {
+      scaleEl.value = scene3d.pixelRatioScale;
+      $('tn-scale-v').textContent = scene3d.pixelRatioScale.toFixed(2);
+    }
+  }
+
+  // ------------------------------------------------------------------- copies
   $('tn-copy').addEventListener('click', () => copy(out.textContent, $('tn-copy'), 'Copy region line'));
   $('tn-lookcopy').addEventListener('click', () => copy(lookOut.textContent, $('tn-lookcopy'), 'Copy HIGHLIGHT block'));
-  $('tn-camcopy').addEventListener('click', () => copy(camOut.textContent, $('tn-camcopy'), 'Copy keyframe line'));
+  $('tn-camcopy').addEventListener('click', () => copy(camOut.textContent, $('tn-camcopy'), 'Copy keyframe'));
 
   function copy(text, btn, label) {
     navigator.clipboard.writeText(text).then(() => {
@@ -288,25 +498,48 @@ export function initTuner() {
     });
   }
 
-  // Live camera readout, sampled from the rig's current damped progress.
+  /**
+   * Live camera readout. Under free-look the numbers are inverted back out of
+   * the actual camera position (see FreeLook.toKeyframe); otherwise they come
+   * straight off the rig's keyframe track.
+   */
   function updateCamera() {
-    const s = rig.sample(rig.progress);
+    const s = freeLook.enabled
+      ? freeLook.toKeyframe(rig.sample(rig.progress).azimuth)
+      : rig.sample(rig.progress);
     camOut.textContent =
       `{ p: ${rig.progress.toFixed(2)}, azimuth: ${Math.round(s.azimuth)}, ` +
       `polar: ${Math.round(s.polar)}, zoom: ${s.zoom.toFixed(2)} },`;
+
+    // A drifted orbit target makes the captured keyframe unreproducible: the
+    // rig always looks at the origin.
+    const driftEl = $('tn-drift');
+    const drift = freeLook.enabled ? freeLook.targetDrift() : 0;
+    if (drift > 0.02) {
+      driftEl.style.display = '';
+      driftEl.textContent =
+        `⚠ Orbit target is ${(drift * 100).toFixed(0)}% of the model radius off ` +
+        `center — the rig always looks at the origin, so this angle won't ` +
+        `reproduce. Recenter before copying.`;
+    } else {
+      driftEl.style.display = 'none';
+    }
   }
-  setInterval(updateCamera, 120);
+  setInterval(() => { updateCamera(); refreshStats(); }, 120);
 
   // The main loop only renders while the section is on screen; nudge a frame
   // after edits made while it is parked.
   function render() {
-    scene3d.render();
+    scene3d.render(1 / 60);
   }
 
   refreshInputs();
   refreshLookOut();
+  refreshFxOut();
   updateCamera();
+  refreshStats();
   syncScene();
 
-  console.log('[tuner] active — click the model to place the green highlight.');
+  console.log('[tuner] active — click the model to place the highlight, or ' +
+    'enable Free look to author camera keyframes.');
 }
