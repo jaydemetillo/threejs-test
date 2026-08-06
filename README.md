@@ -11,12 +11,28 @@ Built with **Vite + vanilla Three.js + GSAP ScrollTrigger**. No framework.
 
 ## Quick start
 
+**macOS — no typing:** double-click **`start.command`** in Finder. It finds
+Node (including one installed through nvm, which Finder does not put on `PATH`
+by default), installs dependencies if they are missing or have changed since
+the last run, starts the dev server and opens the tuner in your browser. Leave
+the Terminal window it opens running — that *is* the server; `Control-C` or
+closing the window stops it.
+
+If macOS refuses to run it the first time, right-click the file → **Open** →
+**Open** once, and double-click works from then on.
+
+Everything it does, by hand:
+
 ```bash
 npm install
-npm run dev        # local dev server (add ?tune for the visual tuner)
+npm start          # dev server, opens /?tune in your browser
+npm run dev        # dev server, no auto-open (add ?tune yourself)
 npm run build      # production build to dist/
 npm run preview    # serve the production build
 ```
+
+Node **^20.19 or >=22.12** is required (Vite 8). `start.command` checks this up
+front and tells you plainly instead of failing with a stack trace.
 
 Deploying is a static-host job: `npm run build`, then serve `dist/`. Enable
 gzip/brotli on the host — the model compresses well on the wire.
@@ -85,8 +101,8 @@ scene measures the model's bounding box at load.
 ## Tuning visually (`?tune`)
 
 ```bash
-npm run dev
-# then open http://localhost:5173/?tune
+npm start
+# or: npm run dev, then open http://localhost:5173/?tune
 ```
 
 A panel appears top-right. **–** in its header collapses it to a title pill
