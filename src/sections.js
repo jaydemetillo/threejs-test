@@ -67,6 +67,31 @@ export const CAMERA_SETTINGS = {
    * nothing about the orbit, the distance or the highlight math changes.
    */
   framingOffset: [0, 0],
+
+  /**
+   * Portrait rescue. `distanceScale` is a deliberately tight crop, and a wide
+   * desktop viewport absorbs it — but a portrait phone does not: the side-on
+   * beats measure 2–9% of the appliance past the screen edge, cutting off its
+   * nose and tail.
+   *
+   * Below `belowAspect`, the crop eases out toward `minScale` in proportion to
+   * how narrow the viewport is. At or above that aspect nothing changes at
+   * all, so the desktop framing is untouched.
+   *
+   * Set `minScale` equal to `distanceScale` to disable and keep the tight crop
+   * everywhere.
+   */
+  narrowCrop: {
+    // Measured, not guessed: the crop is WORST at a square viewport (~11% of
+    // the model off-screen at 1:1), not at the narrowest one. Below aspect 1
+    // framedRadius() starts growing as the horizontal fov closes in, which
+    // partly self-corrects; above it there is spare width. So the correction
+    // has to start in landscape (1.3) and be at full strength by 1.0, rather
+    // than starting at portrait.
+    belowAspect: 1.3,
+    fullyByAspect: 1.0,
+    minScale: 0.97,
+  },
 };
 
 export const CAMERA_KEYFRAMES = [
@@ -167,6 +192,24 @@ export const POSTFX = {
   vignette: {
     offset: 0.32,
     darkness: 0.42,
+  },
+  /**
+   * Screen-space ambient occlusion. On an untextured clay model this is the
+   * single biggest readability win — it puts contact shading into every
+   * crevice, which is what makes a diagram read as a solid object rather than
+   * a flat silhouette.
+   *
+   * It is also the most expensive thing here: it needs a NormalPass, i.e. a
+   * SECOND full geometry pass over ~1.5M triangles. That is why 'auto' means
+   * high tier only, and why resolutionScale defaults to half — AO is low
+   * frequency, so half-res is visually free and quarters the sampling cost.
+   */
+  ao: {
+    enabled: 'auto',
+    intensity: 1.7,
+    radius: 0.09,
+    bias: 0.03,
+    resolutionScale: 0.5,
   },
 };
 

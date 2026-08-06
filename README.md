@@ -162,7 +162,16 @@ parallax, so at large offsets the model is seen slightly more side-on. That is
 real camera behaviour, not a bug — keep offsets modest if you want the framing
 dead neutral.
 
-**Post FX** tunes bloom and vignette live — the same sliders the shipped look
+**Keyframes** is a full editor for `CAMERA_KEYFRAMES`. Pick a keyframe, **Go
+to** scrolls the page to that beat, **Set from camera** overwrites its angle
+from wherever free look has you, and **Insert here** adds one at the current
+scroll position. Edits are live, so you scroll back through to check the move
+before copying the whole array out. Two invariants are enforced for you: the
+track stays sorted, and two keyframes can never share a `p` — `sample()`
+divides by the gap between neighbours, so a duplicate would produce NaN camera
+angles. You cannot delete below two keyframes for the same reason.
+
+**Post FX** tunes bloom, vignette and ambient occlusion live — the same sliders the shipped look
 is built from — and emits a ready-to-paste `POSTFX` block. `enabled` and
 `multisampling` are echoed from config rather than made editable, because both
 are decided when the renderer is constructed.
@@ -170,9 +179,25 @@ are decided when the renderer is constructed.
 **Performance** is a live HUD: FPS, frame time, draw calls, triangles, program
 count, the current pixel ratio and the detected device tier. Below it, **Ratio**
 overrides the resolution by hand (which switches the adaptive loop off), and
-**Preview tier** applies another tier's pixel-ratio cap and post-FX budget so
-you can see roughly what a budget phone gets without one. MSAA and the
-renderer's own antialias are fixed at construction, so reload to test those.
+**Preview tier** applies another tier's pixel-ratio cap and post-FX budget.
+
+**Mobile tester** resizes the stage to phone and tablet dimensions. Be clear
+on what it does and does not prove: the canvas measures its own element, so
+**3D framing is accurate**; CSS is not, because cards and type size off `vw`/
+`vh` and media queries that still see the real window. A card can look like it
+overflows here and be perfectly fine on a real handset. Use device mode or an
+actual phone to judge layout.
+
+**`?tier=low|mid|high`** forces the entire pipeline, including the parts no
+live toggle can reach — the renderer's `antialias` flag, the MSAA sample count,
+and whether the AO normal pass is built at all. This is the only way to see
+what a budget phone actually gets without owning one. It works with or without
+`?tune`.
+
+**Remember my edits** (in the export panel) persists everything to
+`localStorage` so a reload no longer discards your work. It is browser-local
+and never writes `sections.js` — you still copy the blocks out to make anything
+permanent. **Clear saved edits and reload** returns to whatever is in the file.
 
 Nothing the tuner does is persisted until you paste — experiment freely, and
 reload to reset. Color, opacity and feather are **global** (all beats share
@@ -266,6 +291,13 @@ render is unchanged when no highlight is active.
   GPUs every extra fullscreen pass is a full framebuffer round-trip, which is
   why pmndrs/postprocessing is used here rather than three's own
   `EffectComposer` (one pass per effect).
+- **Ambient occlusion** (`POSTFX.ao`) is the biggest readability win on an
+  untextured clay model — contact shading in every crevice is what makes it
+  read as solid rather than as a flat silhouette. It is also the most
+  expensive thing here: it needs a `NormalPass`, i.e. a **second full geometry
+  pass**. Measured, that takes the frame from 1,496,489 to 2,992,963 triangles
+  — exactly double. Hence `'auto'` means high tier only, and half-resolution
+  by default (AO is low frequency, so half-res is visually free).
 - **No SMAA.** The composer's `multisampling` gives real MSAA on WebGL2, which
   is better and cheaper here, and SMAA ships its lookup textures as `data:`
   URIs — which the strict-CSP hosts this project targets refuse. When the
@@ -289,6 +321,20 @@ Handled in code — worth knowing before changing layout:
 - **Device tiering** (`src/quality.js`): a cheap probe (coarse pointer, core
   count, device memory, WebGL2) picks `low`/`mid`/`high`, which sets the
   pixel-ratio cap, the MSAA sample count, and whether post-processing runs.
+  Note `navigator.deviceMemory` is **Chromium-only** — Safari and Firefox never
+  report it. It may veto downward when present, but is deliberately not
+  required: gating on it would pin every iPhone and iPad to the low tier
+  forever, losing the highlight bloom on most mobile readers for a reason about
+  API support rather than about the hardware.
+- **Narrow-viewport crop correction** (`CAMERA_SETTINGS.narrowCrop`):
+  `distanceScale` is a deliberately tight crop that a wide desktop absorbs but
+  a narrow viewport does not. Measured across 16 viewports, the side-on beats
+  ran 2–11% of the model past the screen edge. Counterintuitively the worst
+  case is a **square** viewport, not the narrowest one — below aspect 1 the
+  auto-framing starts widening on its own as the horizontal fov closes in,
+  while above it there is spare width. So the correction ramps in from aspect
+  1.3 and is at full strength by 1.0. Landscape desktop framing is bit-for-bit
+  unchanged.
 - **Adaptive resolution**: on top of that, a closed loop measures real frame
   times and scales resolution until `QUALITY.targetFps` holds. Pixel ratio is
   the biggest lever on phones — fragment work dominates on tile-based GPUs and

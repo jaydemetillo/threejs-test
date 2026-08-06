@@ -58,6 +58,31 @@ export class CameraRig {
     };
   }
 
+  /**
+   * The crop multiplier for the current viewport.
+   *
+   * Returns CAMERA_SETTINGS.distanceScale unchanged on anything landscape —
+   * the desktop framing is deliberately tight and must not move. On portrait
+   * viewports it eases toward narrowCrop.minScale in proportion to how narrow
+   * things get, because the same tight crop cuts a long subject off at the
+   * screen edges on a phone. Ramping rather than switching means rotating a
+   * device or dragging a window across the threshold does not jump.
+   */
+  distanceScale() {
+    const { distanceScale, narrowCrop } = CAMERA_SETTINGS;
+    if (!narrowCrop) return distanceScale;
+    const aspect = this.scene3d.camera.aspect;
+    if (aspect >= narrowCrop.belowAspect) return distanceScale;
+    // Fully applied by `fullyByAspect` — tablets in portrait (~0.75) need the
+    // whole correction, not half of it, so the ramp cannot run all the way
+    // down to phone aspects before it takes full effect.
+    const t = THREE.MathUtils.clamp(
+      (narrowCrop.belowAspect - aspect) /
+        (narrowCrop.belowAspect - narrowCrop.fullyByAspect), 0, 1);
+    return THREE.MathUtils.lerp(
+      distanceScale, Math.max(distanceScale, narrowCrop.minScale), t);
+  }
+
   update(dt) {
     if (this.reducedMotion) {
       this.progress = this.targetProgress;
@@ -69,7 +94,7 @@ export class CameraRig {
 
     const { azimuth, polar, zoom } = this.sample(this.progress);
     const radius =
-      this.scene3d.framedRadius() * zoom * CAMERA_SETTINGS.distanceScale;
+      this.scene3d.framedRadius() * zoom * this.distanceScale();
 
     const az = deg(azimuth);
     const pol = deg(polar);

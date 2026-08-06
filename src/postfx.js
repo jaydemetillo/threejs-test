@@ -3,12 +3,14 @@ import {
   EffectComposer,
   RenderPass,
   EffectPass,
+  NormalPass,
   BloomEffect,
   VignetteEffect,
+  SSAOEffect,
   BlendFunction,
 } from 'postprocessing';
 import { POSTFX } from './sections.js';
-import { TIER_PROFILE, postFXWanted } from './quality.js';
+import { TIER_PROFILE, postFXWanted, aoWanted } from './quality.js';
 
 /**
  * Optional post-processing chain (pmndrs/postprocessing).
@@ -39,6 +41,8 @@ export class PostFX {
     this.composer = null;
     this.bloom = null;
     this.vignette = null;
+    this.ao = null;
+    this.normalPass = null;
     this.available = false;
     this.enabled = false;
 
@@ -83,8 +87,35 @@ export class PostFX {
     });
 
     this.composer.addPass(new RenderPass(scene, camera));
-    // One EffectPass = one merged fragment shader for both effects.
-    this.composer.addPass(new EffectPass(camera, this.bloom, this.vignette));
+
+    // Ambient occlusion, when the tier can afford the extra geometry pass.
+    // Built before the EffectPass so the NormalPass it depends on has already
+    // run by the time the merged shader samples it.
+    const effects = [];
+    if (aoWanted(this.tier)) {
+      this.normalPass = new NormalPass(scene, camera, {
+        resolutionScale: POSTFX.ao.resolutionScale,
+      });
+      this.composer.addPass(this.normalPass);
+      this.ao = new SSAOEffect(camera, this.normalPass.texture, {
+        blendFunction: BlendFunction.MULTIPLY,
+        intensity: POSTFX.ao.intensity,
+        radius: POSTFX.ao.radius,
+        bias: POSTFX.ao.bias,
+        resolutionScale: POSTFX.ao.resolutionScale,
+        worldDistanceThreshold: 20,
+        worldDistanceFalloff: 5,
+        worldProximityThreshold: 0.4,
+        worldProximityFalloff: 0.1,
+      });
+      // AO first: it darkens the scene, and bloom should see the darkened
+      // result rather than blooming light that AO is about to remove.
+      effects.push(this.ao);
+    }
+    effects.push(this.bloom, this.vignette);
+
+    // One EffectPass = one merged fragment shader for every effect in it.
+    this.composer.addPass(new EffectPass(camera, ...effects));
 
     this.resize();
   }
@@ -105,6 +136,14 @@ export class PostFX {
   set bloomSmoothing(v) { if (this.bloom) this.bloom.luminanceMaterial.smoothing = v; }
   set vignetteOffset(v) { if (this.vignette) this.vignette.offset = v; }
   set vignetteDarkness(v) { if (this.vignette) this.vignette.darkness = v; }
+  set aoIntensity(v) { if (this.ao) this.ao.intensity = v; }
+  set aoRadius(v) { if (this.ao) this.ao.ssaoMaterial.radius = v; }
+  set aoBias(v) { if (this.ao) this.ao.ssaoMaterial.bias = v; }
+
+  /** True when AO was actually built (tier allowed it), not merely configured. */
+  get hasAO() {
+    return !!this.ao;
+  }
 
   values() {
     if (!this.composer) return null;
@@ -115,6 +154,9 @@ export class PostFX {
       luminanceSmoothing: this.bloom.luminanceMaterial.smoothing,
       offset: this.vignette.offset,
       darkness: this.vignette.darkness,
+      aoIntensity: this.ao ? this.ao.intensity : POSTFX.ao.intensity,
+      aoRadius: this.ao ? this.ao.ssaoMaterial.radius : POSTFX.ao.radius,
+      aoBias: this.ao ? this.ao.ssaoMaterial.bias : POSTFX.ao.bias,
     };
   }
 

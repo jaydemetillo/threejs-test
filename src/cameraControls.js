@@ -3,7 +3,6 @@ import {
   MathUtils,
 } from 'three';
 import CameraControls from 'camera-controls';
-import { CAMERA_SETTINGS } from './sections.js';
 
 // The library only needs this slice of three; passing the subset instead of
 // the whole namespace keeps the tuner chunk from re-bundling three.
@@ -118,7 +117,10 @@ export class FreeLook {
       azimuth += k * 360;
     }
 
-    const zoom = radius / (this.scene3d.framedRadius() * CAMERA_SETTINGS.distanceScale);
+    // Divide by the rig's EFFECTIVE crop, not the raw config value — on a
+    // portrait viewport narrowCrop eases distanceScale up, and using the raw
+    // number here would bake that correction into every captured zoom.
+    const zoom = radius / (this.scene3d.framedRadius() * this.rig.distanceScale());
     return { azimuth, polar, zoom };
   }
 

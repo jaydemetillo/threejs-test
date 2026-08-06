@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { FreeLook } from './cameraControls.js';
 import { TIER_PROFILE } from './quality.js';
-import { POSTFX, CAMERA_SETTINGS } from './sections.js';
+import { POSTFX, CAMERA_SETTINGS, CAMERA_KEYFRAMES } from './sections.js';
 
 /**
  * DEV-ONLY visual tuner. Loaded only when the page URL contains ?tune
@@ -37,6 +37,109 @@ export function initTuner() {
   }));
   let active = 0;
   let frozen = false;
+
+  // ------------------------------------------------------------- persistence
+  // Tuner-only: nothing here runs on the normal page. Restoring happens before
+  // any UI is built, so every control below reads back the saved value rather
+  // than the sections.js default.
+  const STORE_KEY = 'threejs-tuner-v1';
+  const OFF_KEY = `${STORE_KEY}:off`;
+  let persistOn = localStorage.getItem(OFF_KEY) !== '1';
+
+  function loadState() {
+    if (!persistOn) return null;
+    try {
+      return JSON.parse(localStorage.getItem(STORE_KEY) || 'null');
+    } catch {
+      return null; // corrupt entry should never break the tuner
+    }
+  }
+
+  const saved = loadState();
+  if (saved) {
+    try {
+      // Regions are per-step and matched by id, so adding or reordering steps
+      // in sections.js cannot smear one step's box onto another.
+      for (const r of saved.regions || []) {
+        const target = regions.find((x) => x.id === r.id);
+        if (target && r.center?.length === 3 && r.size?.length === 3) {
+          target.center = [...r.center];
+          target.size = [...r.size];
+        }
+      }
+      const u = highlighter.uniforms;
+      const L = saved.look;
+      if (L) {
+        if (L.color) u.uFocusColor.value.set(L.color);
+        if (Number.isFinite(L.opacity)) u.uFocusOpacity.value = L.opacity;
+        if (Number.isFinite(L.tint)) u.uTintStrength.value = L.tint;
+        if (Number.isFinite(L.glow)) u.uEmissiveBoost.value = L.glow;
+        if (Number.isFinite(L.dim)) u.uDimLevel.value = L.dim;
+      }
+      if (saved.camera) {
+        const c = saved.camera;
+        if (Number.isFinite(c.distanceScale)) CAMERA_SETTINGS.distanceScale = c.distanceScale;
+        if (c.framingOffset?.length === 2) {
+          CAMERA_SETTINGS.framingOffset[0] = c.framingOffset[0];
+          CAMERA_SETTINGS.framingOffset[1] = c.framingOffset[1];
+        }
+      }
+      // Splice rather than reassign: cameraRig.js holds the imported array.
+      if (Array.isArray(saved.keyframes) && saved.keyframes.length >= 2) {
+        const ok = saved.keyframes.every((k) =>
+          ['p', 'azimuth', 'polar', 'zoom'].every((f) => Number.isFinite(k[f])));
+        if (ok) {
+          CAMERA_KEYFRAMES.splice(0, CAMERA_KEYFRAMES.length,
+            ...saved.keyframes.map((k) => ({ ...k })).sort((a, b) => a.p - b.p));
+        }
+      }
+      if (saved.postfx && postfx && postfx.composer) {
+        const f = saved.postfx;
+        if (Number.isFinite(f.intensity)) postfx.bloomIntensity = f.intensity;
+        if (Number.isFinite(f.radius)) postfx.bloomRadius = f.radius;
+        if (Number.isFinite(f.luminanceThreshold)) postfx.bloomThreshold = f.luminanceThreshold;
+        if (Number.isFinite(f.luminanceSmoothing)) postfx.bloomSmoothing = f.luminanceSmoothing;
+        if (Number.isFinite(f.offset)) postfx.vignetteOffset = f.offset;
+        if (Number.isFinite(f.darkness)) postfx.vignetteDarkness = f.darkness;
+        if (Number.isFinite(f.aoIntensity)) postfx.aoIntensity = f.aoIntensity;
+        if (Number.isFinite(f.aoRadius)) postfx.aoRadius = f.aoRadius;
+        if (Number.isFinite(f.aoBias)) postfx.aoBias = f.aoBias;
+      }
+    } catch (err) {
+      console.warn('[tuner] could not restore saved edits:', err);
+    }
+  }
+
+  let saveTimer = 0;
+  function saveState() {
+    if (!persistOn) return;
+    try {
+      localStorage.setItem(STORE_KEY, JSON.stringify({
+        regions: regions.map((r) => ({ id: r.id, center: r.center, size: r.size })),
+        look: {
+          color: '#' + highlighter.uniforms.uFocusColor.value.getHexString(),
+          opacity: highlighter.uniforms.uFocusOpacity.value,
+          tint: highlighter.uniforms.uTintStrength.value,
+          glow: highlighter.uniforms.uEmissiveBoost.value,
+          dim: highlighter.uniforms.uDimLevel.value,
+          edgeFeather: featherFrac,
+        },
+        camera: {
+          distanceScale: CAMERA_SETTINGS.distanceScale,
+          framingOffset: [...CAMERA_SETTINGS.framingOffset],
+        },
+        keyframes: CAMERA_KEYFRAMES.map((k) => ({ ...k })),
+        postfx: postfx && postfx.composer ? postfx.values() : null,
+      }));
+    } catch (err) {
+      console.warn('[tuner] could not save edits:', err);
+    }
+  }
+  // Debounced: slider drags fire continuously and localStorage is synchronous.
+  const scheduleSave = () => {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(saveState, 400);
+  };
 
   // ---------------------------------------------------------------- wireframe
   const boxHelper = new THREE.LineSegments(
@@ -92,6 +195,7 @@ export function initTuner() {
     ].map((v) => Math.min(1, Math.max(0, v)));
     refreshInputs();
     syncScene();
+    scheduleSave(); // canvas clicks are outside the panel's listeners
   });
 
   // -------------------------------------------------------------------- panel
@@ -229,6 +333,27 @@ export function initTuner() {
     </details>
 
     <details>
+      <summary>Keyframes</summary>
+      <select id="tn-kf"></select>
+      <label><span>At p</span><input type="range" id="tn-kfp" min="0" max="1" step="0.01"><span class="val" id="tn-kfp-v"></span></label>
+      <div class="row" style="margin-top:6px">
+        <button id="tn-kfjump">Go to</button>
+        <button id="tn-kfset">Set from camera</button>
+      </div>
+      <div class="row" style="margin-top:6px">
+        <button id="tn-kfadd">Insert here</button>
+        <button id="tn-kfdel">Delete</button>
+      </div>
+      <p class="warn" id="tn-kfwarn" style="display:none"></p>
+      <pre id="tn-kfout"></pre>
+      <button id="tn-kfcopy">Copy CAMERA_KEYFRAMES</button>
+      <p class="hint"><b>Go to</b> scrolls the page to that beat.
+        <b>Set from camera</b> overwrites its angle with wherever you are now —
+        turn on Free look first. Edits are live, so scroll back through to
+        check the move before copying.</p>
+    </details>
+
+    <details>
       <summary>Post FX</summary>
       <div id="tn-fx-body">
         <label class="check"><input type="checkbox" id="tn-fx-on">
@@ -239,6 +364,15 @@ export function initTuner() {
         <label><span>Radius</span><input type="range" id="tn-radius" min="0" max="1" step="0.01"><span class="val" id="tn-radius-v"></span></label>
         <label><span>Vig offset</span><input type="range" id="tn-vigo" min="0" max="1" step="0.01"><span class="val" id="tn-vigo-v"></span></label>
         <label><span>Vig dark</span><input type="range" id="tn-vigd" min="0" max="1.5" step="0.01"><span class="val" id="tn-vigd-v"></span></label>
+        <div id="tn-ao-body">
+          <span style="font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#8b8f98">Ambient occlusion</span>
+          <label><span>AO amount</span><input type="range" id="tn-aoi" min="0" max="4" step="0.05"><span class="val" id="tn-aoi-v"></span></label>
+          <label><span>AO radius</span><input type="range" id="tn-aor" min="0.01" max="0.4" step="0.01"><span class="val" id="tn-aor-v"></span></label>
+          <label><span>AO bias</span><input type="range" id="tn-aob" min="0" max="0.15" step="0.005"><span class="val" id="tn-aob-v"></span></label>
+        </div>
+        <p class="hint" id="tn-ao-off" style="display:none">AO is off on this
+          tier — it needs a second geometry pass. Reload with
+          <b>?tier=high</b> to see it.</p>
         <pre id="tn-fxout"></pre>
         <button id="tn-fxcopy">Copy POSTFX block</button>
       </div>
@@ -274,12 +408,43 @@ export function initTuner() {
         so reload to test those.</p>
     </details>
 
+    <details>
+      <summary>Mobile tester</summary>
+      <select id="tn-device"></select>
+      <dl class="stats" style="margin-top:8px">
+        <dt>Stage</dt><dd id="tn-vp">–</dd>
+        <dt>Aspect</dt><dd id="tn-aspect">–</dd>
+        <dt>Tier</dt><dd id="tn-mtier">–</dd>
+        <dt>Post FX</dt><dd id="tn-mfx">–</dd>
+        <dt>AO</dt><dd id="tn-mao">–</dd>
+      </dl>
+      <p class="hint"><b>3D framing only.</b> The canvas measures its own
+        element, so camera framing and the narrow-viewport correction are
+        accurate here. CSS is not: cards and type size off <code>vw</code>/
+        <code>vh</code> and media queries, which still see the real window —
+        a card may look like it overflows when it is fine on a real phone.
+        Use device mode or an actual handset to judge layout.</p>
+      <p class="hint">Quality is a separate axis — reload with
+        <b>?tier=low</b> / <b>mid</b> / <b>high</b> for that tier's real
+        pipeline, including the antialias and AO settings that are fixed when
+        the renderer is built.</p>
+      <div class="row" style="margin-top:6px">
+        <button id="tn-golow">Reload ?tier=low</button>
+        <button id="tn-gohigh">Reload ?tier=high</button>
+      </div>
+    </details>
+
     <details open>
       <summary>Paste into sections.js</summary>
       <pre id="tn-out"></pre>
       <button id="tn-copy">Copy region line</button>
       <pre id="tn-look"></pre>
       <button id="tn-lookcopy">Copy HIGHLIGHT block</button>
+      <label class="check" style="margin-top:10px"><input type="checkbox" id="tn-persist">
+        Remember my edits across reloads</label>
+      <p class="hint" id="tn-persist-note">Off: a reload restores whatever is
+        in sections.js.</p>
+      <button id="tn-clear">Clear saved edits and reload</button>
     </details>
     </div>
   `;
@@ -345,7 +510,8 @@ export function initTuner() {
   // the uniform in world units, so track the normalized fraction here for
   // the config snippet.
   const u = highlighter.uniforms;
-  let featherFrac = 0.1;
+  let featherFrac = Number.isFinite(saved?.look?.edgeFeather) ? saved.look.edgeFeather : 0.1;
+  u.uFocusFeather.value = scene3d.boundingRadius * featherFrac;
   const lookOut = $('tn-look');
 
   function refreshLookOut() {
@@ -471,7 +637,16 @@ export function initTuner() {
       ['tn-radius', (x) => { postfx.bloomRadius = x; }, v.radius, 2],
       ['tn-vigo', (x) => { postfx.vignetteOffset = x; }, v.offset, 2],
       ['tn-vigd', (x) => { postfx.vignetteDarkness = x; }, v.darkness, 2],
+      ['tn-aoi', (x) => { postfx.aoIntensity = x; }, v.aoIntensity, 2],
+      ['tn-aor', (x) => { postfx.aoRadius = x; }, v.aoRadius, 2],
+      ['tn-aob', (x) => { postfx.aoBias = x; }, v.aoBias, 3],
     ];
+    // AO is decided when the composer is built, so if this tier skipped it the
+    // sliders would be writing into nothing — hide them and say why.
+    if (!postfx.hasAO) {
+      $('tn-ao-body').style.display = 'none';
+      $('tn-ao-off').style.display = '';
+    }
     for (const [id, apply, initial, decimals] of fx.slice(1)) {
       const el = $(id);
       el.value = initial;
@@ -516,8 +691,191 @@ export function initTuner() {
       `    radius: ${n(v.radius)},\n` +
       `  },\n` +
       `  vignette: { offset: ${n(v.offset)}, darkness: ${n(v.darkness)} },\n` +
+      `  ao: {\n` +
+      `    enabled: ${typeof POSTFX.ao.enabled === 'string' ? `'${POSTFX.ao.enabled}'` : POSTFX.ao.enabled},\n` +
+      `    intensity: ${n(v.aoIntensity)},\n` +
+      `    radius: ${n(v.aoRadius)},\n` +
+      `    bias: ${+v.aoBias.toFixed(3)},\n` +
+      `    resolutionScale: ${POSTFX.ao.resolutionScale},\n` +
+      `  },\n` +
       `};`;
   }
+
+  // ---------------------------------------------------------------- keyframes
+  // Edits mutate CAMERA_KEYFRAMES in place — the rig re-reads it every frame,
+  // so the camera track changes live with no re-wiring.
+  const kfSel = $('tn-kf');
+  const kfOut = $('tn-kfout');
+  const kfWarn = $('tn-kfwarn');
+  // Track the selected keyframe by identity, not index: editing `p` re-sorts
+  // the array, and an index would silently start pointing at a different one.
+  let kfActive = CAMERA_KEYFRAMES[0];
+
+  const kfIndex = () => CAMERA_KEYFRAMES.indexOf(kfActive);
+  const warn = (msg) => {
+    kfWarn.style.display = msg ? '' : 'none';
+    kfWarn.textContent = msg || '';
+  };
+
+  function refreshKeyframes() {
+    kfSel.innerHTML = '';
+    CAMERA_KEYFRAMES.forEach((k, i) => {
+      const o = document.createElement('option');
+      o.value = String(i);
+      o.textContent =
+        `${i + 1}. p=${k.p.toFixed(2)}  az=${Math.round(k.azimuth)}  ` +
+        `pol=${Math.round(k.polar)}  z=${k.zoom.toFixed(2)}`;
+      kfSel.appendChild(o);
+    });
+    if (kfIndex() < 0) kfActive = CAMERA_KEYFRAMES[0];
+    kfSel.value = String(kfIndex());
+
+    const pEl = $('tn-kfp');
+    pEl.value = kfActive.p;
+    $('tn-kfp-v').textContent = kfActive.p.toFixed(2);
+
+    kfOut.textContent =
+      'export const CAMERA_KEYFRAMES = [\n' +
+      CAMERA_KEYFRAMES.map((k) =>
+        `  { p: ${k.p.toFixed(2)}, azimuth: ${Math.round(k.azimuth)}, ` +
+        `polar: ${Math.round(k.polar)}, zoom: ${k.zoom.toFixed(2)} },`).join('\n') +
+      '\n];';
+  }
+
+  // sample() walks the track assuming ascending p, and divides by the gap
+  // between neighbours — duplicates would produce a divide-by-zero and NaN
+  // camera angles, so keep it sorted and spaced.
+  const kfSort = () => CAMERA_KEYFRAMES.sort((a, b) => a.p - b.p);
+  const kfTooClose = (p, ignore) =>
+    CAMERA_KEYFRAMES.some((k) => k !== ignore && Math.abs(k.p - p) < 0.005);
+
+  kfSel.addEventListener('change', () => {
+    kfActive = CAMERA_KEYFRAMES[+kfSel.value];
+    refreshKeyframes();
+    warn('');
+  });
+
+  $('tn-kfp').addEventListener('input', (e) => {
+    const p = +e.target.value;
+    if (kfTooClose(p, kfActive)) {
+      warn('Another keyframe already sits at that p — they must stay distinct.');
+      return;
+    }
+    warn('');
+    kfActive.p = p;
+    kfSort();
+    refreshKeyframes();
+    if (!freeLook.enabled) rig.update(1 / 60);
+    render();
+  });
+
+  $('tn-kfjump').addEventListener('click', () => {
+    // Scroll the page to the beat rather than teleporting the rig, so cards
+    // and highlights land in the same state a reader would see.
+    const sec = document.querySelector('.scrolly');
+    const scrollable = sec.offsetHeight - window.innerHeight;
+    window.scrollTo({ top: sec.offsetTop + scrollable * kfActive.p, behavior: 'smooth' });
+  });
+
+  $('tn-kfset').addEventListener('click', () => {
+    // Unwrap against this keyframe's own azimuth so it stays on the same turn
+    // of the track instead of jumping a revolution.
+    const s = freeLook.enabled
+      ? freeLook.toKeyframe(kfActive.azimuth)
+      : rig.sample(rig.progress);
+    kfActive.azimuth = s.azimuth;
+    kfActive.polar = s.polar;
+    kfActive.zoom = s.zoom;
+    refreshKeyframes();
+    warn(freeLook.enabled ? '' : 'Free look is off, so this just re-read the existing track.');
+    render();
+  });
+
+  $('tn-kfadd').addEventListener('click', () => {
+    const p = +rig.progress.toFixed(2);
+    if (kfTooClose(p, null)) {
+      warn(`A keyframe already sits at p=${p.toFixed(2)}. Scroll elsewhere first.`);
+      return;
+    }
+    const s = freeLook.enabled ? freeLook.toKeyframe(rig.sample(p).azimuth) : rig.sample(p);
+    kfActive = { p, azimuth: s.azimuth, polar: s.polar, zoom: s.zoom };
+    CAMERA_KEYFRAMES.push(kfActive);
+    kfSort();
+    refreshKeyframes();
+    warn('');
+  });
+
+  $('tn-kfdel').addEventListener('click', () => {
+    if (CAMERA_KEYFRAMES.length <= 2) {
+      warn('The track needs at least two keyframes to interpolate between.');
+      return;
+    }
+    const i = kfIndex();
+    CAMERA_KEYFRAMES.splice(i, 1);
+    kfActive = CAMERA_KEYFRAMES[Math.min(i, CAMERA_KEYFRAMES.length - 1)];
+    refreshKeyframes();
+    warn('');
+    if (!freeLook.enabled) rig.update(1 / 60);
+    render();
+  });
+
+  $('tn-kfcopy').addEventListener('click', () =>
+    copy(kfOut.textContent, $('tn-kfcopy'), 'Copy CAMERA_KEYFRAMES'));
+
+  // ------------------------------------------------------------ mobile tester
+  const DEVICES = [
+    { label: '— full window —', w: 0, h: 0 },
+    { label: 'iPhone SE — 375×667', w: 375, h: 667 },
+    { label: 'iPhone 15 — 393×852', w: 393, h: 852 },
+    { label: 'Pixel 8 — 412×915', w: 412, h: 915 },
+    { label: 'iPad mini — 744×1133', w: 744, h: 1133 },
+  ];
+  const deviceSel = $('tn-device');
+  DEVICES.forEach((d, i) => {
+    const o = document.createElement('option');
+    o.value = String(i);
+    o.textContent = d.label;
+    deviceSel.appendChild(o);
+  });
+
+  const stage = document.querySelector('.scrolly__stage');
+  deviceSel.addEventListener('change', () => {
+    const d = DEVICES[+deviceSel.value];
+    if (!d.w) {
+      stage.style.width = stage.style.height = stage.style.margin = '';
+      stage.style.outline = '';
+    } else {
+      stage.style.width = `${d.w}px`;
+      stage.style.height = `${d.h}px`;
+      stage.style.margin = '0 auto';
+      stage.style.outline = '1px solid #2fbf71';
+    }
+    // The canvas is sized by CSS, so the renderer only learns about this when
+    // told; the sticky trigger's cached start/end need recomputing too.
+    scene3d.resize();
+    if (dbg.ScrollTrigger) dbg.ScrollTrigger.refresh();
+    refreshDevice();
+    render();
+  });
+
+  function refreshDevice() {
+    const w = scene3d.canvas.clientWidth;
+    const h = scene3d.canvas.clientHeight;
+    $('tn-vp').textContent = `${w}×${h}`;
+    $('tn-aspect').textContent = h ? (w / h).toFixed(2) : '–';
+    $('tn-mtier').textContent = scene3d.tier;
+    $('tn-mfx').textContent = postfx && postfx.active ? 'on' : 'off';
+    $('tn-mao').textContent = postfx && postfx.hasAO ? 'on' : 'off';
+  }
+
+  const reloadWithTier = (tier) => {
+    const u = new URL(location.href);
+    u.searchParams.set('tune', '');
+    u.searchParams.set('tier', tier);
+    location.href = u.toString();
+  };
+  $('tn-golow').addEventListener('click', () => reloadWithTier('low'));
+  $('tn-gohigh').addEventListener('click', () => reloadWithTier('high'));
 
   // -------------------------------------------------------------- performance
   const scaleEl = $('tn-scale');
@@ -616,10 +974,41 @@ export function initTuner() {
     scene3d.render(1 / 60);
   }
 
+  // --------------------------------------------------- persistence controls
+  const persistEl = $('tn-persist');
+  const persistNote = $('tn-persist-note');
+  function refreshPersistNote() {
+    persistNote.textContent = persistOn
+      ? 'Saved in this browser only. sections.js is never written — still copy the blocks above to make anything permanent.'
+      : 'Off: a reload restores whatever is in sections.js.';
+  }
+  persistEl.checked = persistOn;
+  refreshPersistNote();
+  persistEl.addEventListener('change', () => {
+    persistOn = persistEl.checked;
+    localStorage.setItem(OFF_KEY, persistOn ? '0' : '1');
+    if (persistOn) saveState();
+    else localStorage.removeItem(STORE_KEY);
+    refreshPersistNote();
+  });
+  $('tn-clear').addEventListener('click', () => {
+    localStorage.removeItem(STORE_KEY);
+    localStorage.removeItem(OFF_KEY);
+    location.reload();
+  });
+
+  // One set of listeners covers every control in the panel, so new controls
+  // are persisted automatically instead of needing their own save call.
+  panel.addEventListener('input', scheduleSave);
+  panel.addEventListener('change', scheduleSave);
+  panel.addEventListener('click', scheduleSave);
+
   refreshInputs();
   refreshLookOut();
   refreshFxOut();
   refreshCamSet();
+  refreshKeyframes();
+  refreshDevice();
   updateCamera();
   refreshStats();
   syncScene();

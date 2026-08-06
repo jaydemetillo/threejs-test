@@ -164,5 +164,8 @@ export function initScrolly(scene3d) {
   // when the page is loaded with ?tune, by src/tuner.js).
   window.__scrolly = {
     rig, highlighter, scene3d, gsap, steps: STEPS, control, postfx, quality,
+    // The tuner's device preview resizes the sticky stage, which invalidates
+    // every trigger's cached start/end — it needs this to recompute them.
+    ScrollTrigger,
   };
 }

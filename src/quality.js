@@ -25,14 +25,31 @@ import { QUALITY, POSTFX } from './sections.js';
 export function detectDeviceTier() {
   if (typeof window === 'undefined') return 'high';
 
+  // ?tier=low|mid|high forces the whole pipeline, including the parts the
+  // tuner cannot switch live: the renderer's antialias flag, MSAA sample
+  // count, and whether the AO normal pass is built at all. This is the only
+  // way to actually see what a budget phone gets without owning one.
+  const forced = new URLSearchParams(location.search).get('tier');
+  if (forced && TIER_PROFILE[forced]) return forced;
+
   // Coarse pointer + no hover is the reliable "this is a touch device" signal;
   // screen size alone misreads a small laptop window as a phone.
   const coarse = window.matchMedia('(pointer: coarse)').matches;
   const noHover = window.matchMedia('(hover: none)').matches;
   const isMobile = coarse && noHover;
 
-  const cores = navigator.hardwareConcurrency || (isMobile ? 4 : 8);
-  const memory = navigator.deviceMemory || (isMobile ? 4 : 8);
+  const cores = Number.isFinite(navigator.hardwareConcurrency)
+    ? navigator.hardwareConcurrency
+    : (isMobile ? 4 : 8);
+
+  // navigator.deviceMemory is a Chromium-only API — Safari and Firefox do not
+  // implement it. So it may veto DOWNWARD when it is present and says the
+  // device is small, but it must never be *required*: gating on it would pin
+  // every iPhone and iPad to the low tier forever, losing the highlight bloom
+  // on most mobile readers for a reason that is about API support rather than
+  // about the hardware.
+  const memKnown = Number.isFinite(navigator.deviceMemory);
+  const memory = memKnown ? navigator.deviceMemory : null;
 
   // WebGL2 absence in 2024+ means a genuinely old or software renderer.
   let webgl2 = false;
@@ -42,16 +59,21 @@ export function detectDeviceTier() {
     webgl2 = false;
   }
 
-  if (!webgl2 || cores <= 2 || memory <= 2) return 'low';
-  if (isMobile) return cores >= 8 && memory >= 6 ? 'mid' : 'low';
+  if (!webgl2 || cores <= 2 || (memKnown && memory <= 2)) return 'low';
+  // 6 cores is the modern-phone line (an iPhone 13 reports 6). Anything at or
+  // above it gets bloom; the adaptive resolution loop is the real safety net
+  // if a given device still cannot hold the framerate.
+  if (isMobile) return cores >= 6 && (!memKnown || memory >= 4) ? 'mid' : 'low';
   return cores >= 8 ? 'high' : 'mid';
 }
 
 /** Per-tier ceilings. `postfx` is the *budget* — POSTFX.enabled still decides. */
 export const TIER_PROFILE = {
-  low: { maxPixelRatio: 1.25, multisampling: 0, postfx: false, antialias: false },
-  mid: { maxPixelRatio: 1.75, multisampling: 2, postfx: true, antialias: true },
-  high: { maxPixelRatio: 2.0, multisampling: 4, postfx: true, antialias: true },
+  // `ao` is separate from `postfx` because ambient occlusion costs a whole
+  // extra geometry pass — a mid-tier phone can afford bloom but not that.
+  low: { maxPixelRatio: 1.25, multisampling: 0, postfx: false, ao: false, antialias: false },
+  mid: { maxPixelRatio: 1.75, multisampling: 2, postfx: true, ao: false, antialias: true },
+  high: { maxPixelRatio: 2.0, multisampling: 4, postfx: true, ao: true, antialias: true },
 };
 
 /**
@@ -66,6 +88,12 @@ export const TIER_PROFILE = {
  */
 export function postFXWanted(tier) {
   return POSTFX.enabled === 'auto' ? TIER_PROFILE[tier].postfx : !!POSTFX.enabled;
+}
+
+/** Same question for ambient occlusion, which has its own (stricter) budget. */
+export function aoWanted(tier) {
+  if (!postFXWanted(tier)) return false;
+  return POSTFX.ao.enabled === 'auto' ? TIER_PROFILE[tier].ao : !!POSTFX.ao.enabled;
 }
 
 /**
