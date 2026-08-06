@@ -349,6 +349,24 @@ Handled in code — worth knowing before changing layout:
   screen with real margin at every beat, the ramp is continuous (halving the
   sample interval halves the step, so there is no pop when a device rotates),
   and landscape desktop is untouched at exactly 0.85.
+- **Card clearance on short landscape** (`CAMERA_SETTINGS.cardClearance`): a
+  phone held sideways leaves ~390px of height and the story card alone is
+  ~208 of it, so a vertically-centred model ends up *behind* the card. The
+  card is meant to overlay the scene — a 1440×900 window overlaps the model's
+  box by 0.073 and reads fine — so the target is that figure, not zero. A
+  1133×744 iPad in landscape measured 0.382 and a phone 0.888.
+
+  The fix is a **vertical** lift, not a sideways shift or a zoom-out: the card
+  spans nearly half the width, so sliding the model across cannot clear it
+  without pushing it off the far edge, and zooming out far enough leaves the
+  subject tiny. The appliance is short in Y even when it fills X, so a lift
+  moves it clear at close to full size. It is paired with a small step back,
+  because the lift alone would carry the model off the top.
+
+  Portrait is deliberately excluded — there the card already sits below the
+  model, and `narrowCrop` owns portrait framing. Verified across 11 viewports;
+  the ramp keys on height, is continuous, and 900px-tall and larger windows
+  are untouched.
 - **Adaptive resolution**: on top of that, a closed loop measures real frame
   times and scales resolution until `QUALITY.targetFps` holds. Pixel ratio is
   the biggest lever on phones — fragment work dominates on tile-based GPUs and

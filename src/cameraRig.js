@@ -69,7 +69,16 @@ export class CameraRig {
    * device or dragging a window across the threshold does not jump.
    */
   distanceScale() {
-    const { distanceScale, narrowCrop } = CAMERA_SETTINGS;
+    const { distanceScale, narrowCrop, cardClearance } = CAMERA_SETTINGS;
+
+    // Short landscape steps back a little so the card-clearance lift below
+    // does not carry the model off the top of the frame.
+    const clearanceT = this.cardClearanceRamp();
+    if (clearanceT > 0 && cardClearance) {
+      return THREE.MathUtils.lerp(
+        distanceScale, Math.max(distanceScale, cardClearance.minScale), clearanceT);
+    }
+
     if (!narrowCrop) return distanceScale;
     const aspect = this.scene3d.camera.aspect;
     if (aspect >= narrowCrop.belowAspect) return distanceScale;
@@ -125,9 +134,37 @@ export class CameraRig {
    * the fov and the current distance, so the same config frames identically on
    * a phone and a widescreen monitor.
    */
+  /**
+   * Extra upward framing applied on short landscape viewports so the story
+   * card does not land on top of the model. Returns 0 everywhere else —
+   * portrait phones and any normal-height window are untouched.
+   */
+  cardClearanceOffset() {
+    const cc = CAMERA_SETTINGS.cardClearance;
+    return cc ? cc.offsetY * this.cardClearanceRamp() : 0;
+  }
+
+  /**
+   * 0 → 1 ramp for how much card clearance this viewport needs. Zero unless
+   * the viewport is landscape AND short, so portrait phones and ordinary
+   * windows are untouched. Shared by the lift and the paired step-back so the
+   * two can never disagree about when they apply.
+   */
+  cardClearanceRamp() {
+    const cc = CAMERA_SETTINGS.cardClearance;
+    if (!cc || this.scene3d.camera.aspect <= 1) return 0;
+    const height = this.scene3d.canvas.clientHeight;
+    if (!height || height >= cc.belowHeight) return 0;
+    return THREE.MathUtils.clamp(
+      (cc.belowHeight - height) / (cc.belowHeight - cc.fullyByHeight), 0, 1);
+  }
+
   applyFramingOffset(radius) {
-    const [fx, fy] = CAMERA_SETTINGS.framingOffset;
     const cam = this.scene3d.camera;
+    const [ox, oy] = CAMERA_SETTINGS.framingOffset;
+    const fx = ox;
+    // Author's offset plus the automatic card clearance.
+    const fy = oy + this.cardClearanceOffset();
 
     if (!fx && !fy) {
       this.lookTarget.set(0, 0, 0);

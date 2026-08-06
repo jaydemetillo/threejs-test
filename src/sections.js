@@ -103,6 +103,41 @@ export const CAMERA_SETTINGS = {
      */
     minScale: 1.1,
   },
+
+  /**
+   * Lift the model clear of the story card on short landscape viewports.
+   *
+   * A phone held sideways gives ~390px of height, and the card alone is ~208
+   * of it — 53%. With the model vertically centred the card lands straight on
+   * top of it. Portrait is unaffected: there the card sits at the bottom with
+   * the model comfortably above it.
+   *
+   * The fix is a VERTICAL framing offset rather than a horizontal one or a
+   * zoom-out. The card spans nearly half the width, so sliding the model
+   * sideways cannot clear it without pushing it off the opposite edge, and
+   * zooming out enough would leave the subject tiny. But the appliance is
+   * short in Y even when it fills the frame in X, so a modest lift moves it
+   * entirely above the card at full size.
+   *
+   * Only applies when the viewport is landscape AND short; it ramps in so
+   * rotating a device does not pop.
+   */
+  cardClearance: {
+    // Measured against the desktop baseline rather than picked: the card is a
+    // fixed ~208px tall, so the shorter the stage the higher its top edge sits
+    // in normalised space and the more of the model it swallows. A 1440x900
+    // window overlaps the model's box by 0.073 and looks right, so that is the
+    // target; a 1133x744 iPad in landscape was at 0.382 and a phone at 0.888.
+    // The ramp is set so 744 lands near the desktop figure and 900 is exactly
+    // untouched.
+    belowHeight: 900,
+    fullyByHeight: 590,
+    offsetY: 0.3,
+    // The lift alone would push the model off the TOP of a 390px-tall stage,
+    // so it is paired with a small step back. Together they clear the card
+    // while keeping the whole appliance on screen.
+    minScale: 0.97,
+  },
 };
 
 export const CAMERA_KEYFRAMES = [
