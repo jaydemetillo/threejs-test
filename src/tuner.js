@@ -279,6 +279,16 @@ export function initTuner() {
       .tuner .pill { font-size: 10px; letter-spacing: .08em; text-transform: uppercase;
         background: #1d3a2a; color: #2fbf71; border: 1px solid #2f6b4c;
         border-radius: 999px; padding: 2px 8px; font-weight: 600; }
+      /* Segmented Desktop/Mobile switch — the active half is unmistakable, so
+         which profile you are editing never has to be inferred. */
+      .tuner .seg { display: flex; gap: 0; margin: 6px 0 0; }
+      .tuner .seg__btn { flex: 1; border-radius: 0; font-weight: 600;
+        border-color: #3a3e46; background: #1b1e23; color: #9aa0a8; }
+      .tuner .seg__btn:first-child { border-radius: 5px 0 0 5px; }
+      .tuner .seg__btn:last-child { border-radius: 0 5px 5px 0; border-left: none; }
+      .tuner .seg__btn.is-active { background: #1d3a2a; color: #7ff0b0;
+        border-color: #2fbf71; }
+      .tuner .seg__btn.is-active:hover { background: #22462f; }
     </style>
 
     <div class="tuner__bar">
@@ -337,10 +347,12 @@ export function initTuner() {
         angle, then copy. The azimuth is unwrapped to continue the existing
         track rather than snapping back through 0°.</p>
 
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:4px">
-        <span style="font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#8b8f98">Model on canvas</span>
-        <span id="tn-profile" class="pill">desktop</span>
+      <span style="font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#8b8f98">Model on canvas</span>
+      <div class="seg">
+        <button id="tn-prof-desktop" class="seg__btn">🖥 Desktop</button>
+        <button id="tn-prof-mobile" class="seg__btn">📱 Mobile</button>
       </div>
+      <p class="hint" id="tn-profile-note" style="margin:5px 0 2px"></p>
       <label><span>Model X</span><input type="range" id="tn-fox" min="-0.5" max="0.5" step="0.01"><span class="val" id="tn-fox-v"></span></label>
       <label><span>Model Y</span><input type="range" id="tn-foy" min="-0.5" max="0.5" step="0.01"><span class="val" id="tn-foy-v"></span></label>
       <label><span>Zoom</span><input type="range" id="tn-fzoom" min="0.6" max="1.6" step="0.01"><span class="val" id="tn-fzoom-v"></span></label>
@@ -352,11 +364,11 @@ export function initTuner() {
         <button id="tn-framereset">Reset this profile</button>
         <button id="tn-camsetcopy">Copy CAMERA_SETTINGS</button>
       </div>
-      <p class="hint">The three sliders above edit the <b>active profile</b>
-        only — the badge shows which. Pick a device in <b>Mobile tester</b> and
-        it switches to <b>mobile</b>; go back to full window for
-        <b>desktop</b>. Copy emits both. They stack on top of the automatic
-        mobile corrections, so you are nudging a frame that is already safe.</p>
+      <p class="hint">The three sliders edit whichever profile is highlighted
+        above. The toggle resizes the stage too, so you are always looking at
+        the frame you are editing. Copy emits both profiles. They stack on top
+        of the automatic mobile corrections, so you are nudging a frame that is
+        already safe.</p>
     </details>
 
     <details>
@@ -664,11 +676,22 @@ export function initTuner() {
       $(`${id}-v`).textContent = (+$(id).value).toFixed(2);
     }
     const name = rig.framingProfile();
-    const badge = $('tn-profile');
-    badge.textContent = name;
-    badge.title = `Editing the ${name} profile — canvas is ` +
-      `${scene3d.canvas.clientWidth}x${scene3d.canvas.clientHeight}`;
+    const w = scene3d.canvas.clientWidth;
+    const h = scene3d.canvas.clientHeight;
+    $('tn-prof-desktop').classList.toggle('is-active', name === 'desktop');
+    $('tn-prof-mobile').classList.toggle('is-active', name === 'mobile');
+    $('tn-profile-note').textContent =
+      `Editing the ${name} profile — stage is ${w}×${h}.`;
   }
+
+  // The toggle resizes the stage rather than just re-pointing the sliders.
+  // Editing the mobile profile at desktop size would show you nothing: the rig
+  // renders whichever profile matches the actual canvas. Driving the size keeps
+  // one source of truth and guarantees what you edit is what you see.
+  $('tn-prof-desktop').addEventListener('click', () => applyDevice(0));
+  // Return to the phone you were last working on, not a fixed default, so a
+  // Desktop/Mobile round trip does not silently move you to another handset.
+  $('tn-prof-mobile').addEventListener('click', () => applyDevice(lastMobilePreset));
 
   $('tn-framereset').addEventListener('click', () => {
     const p = prof();
@@ -889,6 +912,8 @@ export function initTuner() {
     { label: 'Pixel 8 — 412×915', w: 412, h: 915 },
     { label: 'iPad mini — 744×1133', w: 744, h: 1133 },
   ];
+  // What the Mobile button jumps to, remembered across trips to Desktop.
+  let lastMobilePreset = 2;
   const deviceSel = $('tn-device');
   DEVICES.forEach((d, i) => {
     const o = document.createElement('option');
@@ -898,8 +923,26 @@ export function initTuner() {
   });
 
   const stage = document.querySelector('.scrolly__stage');
+
+  /**
+   * Single path for changing the previewed stage size, shared by the
+   * Desktop/Mobile toggle and this dropdown, so the two can never disagree
+   * about what is on screen.
+   */
+  function applyDevice(index) {
+    deviceSel.value = String(index);
+    deviceSel.dispatchEvent(new Event('change'));
+  }
+
   deviceSel.addEventListener('change', () => {
-    const d = DEVICES[+deviceSel.value];
+    const idx = +deviceSel.value;
+    const d = DEVICES[idx];
+    // Remember any preset that actually lands on the mobile profile, so the
+    // toggle brings you back to this handset rather than the default one.
+    if (d.w && ((d.w < CAMERA_SETTINGS.framing.compactBelowWidth) ||
+                (d.h < CAMERA_SETTINGS.framing.compactBelowHeight))) {
+      lastMobilePreset = idx;
+    }
     if (!d.w) {
       stage.style.width = stage.style.height = stage.style.margin = '';
       stage.style.outline = '';
