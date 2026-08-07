@@ -28,7 +28,7 @@ export class FreeLook {
     this.scene3d = scene3d;
     this.control = control;
     // The rig's look target is the orbit center. It is the origin normally,
-    // but CAMERA_SETTINGS.framingOffset trucks it off-center — so every
+    // but CAMERA_SETTINGS.framing trucks it off-centre — so every
     // reference below goes through it rather than assuming (0,0,0).
     this.rig = rig;
     this.enabled = false;

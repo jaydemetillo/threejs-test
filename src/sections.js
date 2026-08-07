@@ -53,20 +53,43 @@ export const CAMERA_SETTINGS = {
   distanceScale: 0.85,
 
   /**
-   * Where the model sits ON THE CANVAS, without changing the orbit angle.
-   * [x, y] as a fraction of the viewport: [0.15, 0] puts it 15% of the
-   * viewport width right of center, [0, -0.1] drops it 10% of the height.
-   * Useful for keeping the subject clear of the story card.
+   * Where the model sits ON THE CANVAS, per screen size, without changing the
+   * orbit angle. Author these with the tuner — pick a device in Mobile tester
+   * and the Camera panel switches to the matching profile automatically.
    *
-   * Implemented as a camera truck — the camera and its look target move
-   * together, perpendicular to the view — so the model holds the SAME spot on
+   * `offset` is [x, y] as a fraction of the viewport: [0.15, 0] puts the model
+   * 15% of the viewport width right of centre, [0, -0.1] drops it 10% of the
+   * height. `zoom` multiplies the framing distance — above 1 pulls back.
+   *
+   * Implemented as a camera truck: the camera and its look target move
+   * together, perpendicular to the view, so the model holds the SAME spot on
    * screen at every azimuth. Translating the model in world space instead
-   * would make it swim across the frame as the camera orbits: pushed right at
-   * the front, centered from the side, pushed left from the back. Because
-   * both ends of the view move by the same vector, the framing shifts but
-   * nothing about the orbit, the distance or the highlight math changes.
+   * would make it swim across the frame as the camera orbits — pushed right at
+   * the front, centred from the side, pushed left from the back. Because both
+   * ends of the view move by the same vector, the framing shifts but nothing
+   * about the orbit, the distance or the highlight maths changes.
+   *
+   * Both values stack ON TOP of the automatic corrections below (narrowCrop,
+   * cardClearance) rather than replacing them, so those keep guaranteeing that
+   * nothing is clipped and the story card never covers the model. These are
+   * composition on top of a frame that is already safe.
    */
-  framingOffset: [0, 0],
+  framing: {
+    /**
+     * A viewport is "compact" when EITHER dimension is small — that catches a
+     * phone in both orientations, where a width-only test would send a
+     * sideways phone (844px wide) to the desktop profile.
+     *
+     * Measured against the CANVAS, not the window, which is what makes the
+     * tuner's device preview work: it resizes the stage while the window stays
+     * put, so keying off the window would leave you editing the desktop
+     * profile while previewing a phone.
+     */
+    compactBelowWidth: 700,
+    compactBelowHeight: 500,
+    desktop: { offset: [0, 0], zoom: 1 },
+    mobile: { offset: [0, 0], zoom: 1 },
+  },
 
   /**
    * Portrait rescue. `distanceScale` is a deliberately tight crop, and a wide

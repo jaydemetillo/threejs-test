@@ -79,9 +79,17 @@ export function initTuner() {
       if (saved.camera) {
         const c = saved.camera;
         if (Number.isFinite(c.distanceScale)) CAMERA_SETTINGS.distanceScale = c.distanceScale;
-        if (c.framingOffset?.length === 2) {
-          CAMERA_SETTINGS.framingOffset[0] = c.framingOffset[0];
-          CAMERA_SETTINGS.framingOffset[1] = c.framingOffset[1];
+        // Restore each framing profile independently, so a saved mobile
+        // composition survives even if only desktop was touched since.
+        for (const key of ['desktop', 'mobile']) {
+          const src = c.framing?.[key];
+          const dst = CAMERA_SETTINGS.framing?.[key];
+          if (!src || !dst) continue;
+          if (src.offset?.length === 2 && src.offset.every(Number.isFinite)) {
+            dst.offset[0] = src.offset[0];
+            dst.offset[1] = src.offset[1];
+          }
+          if (Number.isFinite(src.zoom)) dst.zoom = src.zoom;
         }
       }
       // Splice rather than reassign: cameraRig.js holds the imported array.
@@ -126,7 +134,16 @@ export function initTuner() {
         },
         camera: {
           distanceScale: CAMERA_SETTINGS.distanceScale,
-          framingOffset: [...CAMERA_SETTINGS.framingOffset],
+          framing: {
+            desktop: {
+              offset: [...CAMERA_SETTINGS.framing.desktop.offset],
+              zoom: CAMERA_SETTINGS.framing.desktop.zoom,
+            },
+            mobile: {
+              offset: [...CAMERA_SETTINGS.framing.mobile.offset],
+              zoom: CAMERA_SETTINGS.framing.mobile.zoom,
+            },
+          },
         },
         keyframes: CAMERA_KEYFRAMES.map((k) => ({ ...k })),
         postfx: postfx && postfx.composer ? postfx.values() : null,
@@ -259,6 +276,9 @@ export function initTuner() {
         font-variant-numeric: tabular-nums; }
       .tuner .stats dd.good { color: #2fbf71; }
       .tuner .stats dd.bad { color: #e8733f; }
+      .tuner .pill { font-size: 10px; letter-spacing: .08em; text-transform: uppercase;
+        background: #1d3a2a; color: #2fbf71; border: 1px solid #2f6b4c;
+        border-radius: 999px; padding: 2px 8px; font-weight: 600; }
     </style>
 
     <div class="tuner__bar">
@@ -317,19 +337,26 @@ export function initTuner() {
         angle, then copy. The azimuth is unwrapped to continue the existing
         track rather than snapping back through 0°.</p>
 
-      <span style="font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#8b8f98">Model on canvas</span>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:4px">
+        <span style="font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#8b8f98">Model on canvas</span>
+        <span id="tn-profile" class="pill">desktop</span>
+      </div>
       <label><span>Model X</span><input type="range" id="tn-fox" min="-0.5" max="0.5" step="0.01"><span class="val" id="tn-fox-v"></span></label>
       <label><span>Model Y</span><input type="range" id="tn-foy" min="-0.5" max="0.5" step="0.01"><span class="val" id="tn-foy-v"></span></label>
+      <label><span>Zoom</span><input type="range" id="tn-fzoom" min="0.6" max="1.6" step="0.01"><span class="val" id="tn-fzoom-v"></span></label>
+      <p class="warn" id="tn-offscreen" style="display:none"></p>
+      <span style="font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#8b8f98">All screens</span>
       <label><span>Distance</span><input type="range" id="tn-dist" min="0.5" max="1.6" step="0.01"><span class="val" id="tn-dist-v"></span></label>
       <pre id="tn-camset"></pre>
       <div class="row" style="margin-top:6px">
-        <button id="tn-framereset">Reset framing</button>
+        <button id="tn-framereset">Reset this profile</button>
         <button id="tn-camsetcopy">Copy CAMERA_SETTINGS</button>
       </div>
-      <p class="hint">Moves the model around the canvas without changing the
-        orbit — as a fraction of the viewport, so it frames the same on any
-        screen. It holds the same spot at every angle, which a world-space
-        nudge would not.</p>
+      <p class="hint">The three sliders above edit the <b>active profile</b>
+        only — the badge shows which. Pick a device in <b>Mobile tester</b> and
+        it switches to <b>mobile</b>; go back to full window for
+        <b>desktop</b>. Copy emits both. They stack on top of the automatic
+        mobile corrections, so you are nudging a frame that is already safe.</p>
     </details>
 
     <details>
@@ -584,17 +611,31 @@ export function initTuner() {
   // Framing: writes straight into the live CAMERA_SETTINGS object, which the
   // rig re-reads every frame — so there is nothing to re-apply.
   const camSetOut = $('tn-camset');
+  // Always resolved through the rig, so the panel and the render agree on
+  // which profile is active even as the stage is resized underneath it.
+  const prof = () => rig.activeFraming();
+
   function refreshCamSet() {
-    const [x, y] = CAMERA_SETTINGS.framingOffset;
+    const f = CAMERA_SETTINGS.framing;
+    const n = (v) => (+v).toFixed(2);
+    const line = (k) =>
+      `    ${k}: { offset: [${n(f[k].offset[0])}, ${n(f[k].offset[1])}], ` +
+      `zoom: ${n(f[k].zoom)} },`;
     camSetOut.textContent =
       `export const CAMERA_SETTINGS = {\n` +
-      `  distanceScale: ${CAMERA_SETTINGS.distanceScale.toFixed(2)},\n` +
-      `  framingOffset: [${x.toFixed(2)}, ${y.toFixed(2)}],\n` +
+      `  distanceScale: ${n(CAMERA_SETTINGS.distanceScale)},\n` +
+      `  framing: {\n` +
+      `    compactBelowWidth: ${f.compactBelowWidth},\n` +
+      `    compactBelowHeight: ${f.compactBelowHeight},\n` +
+      `${line('desktop')}\n${line('mobile')}\n` +
+      `  },\n` +
       `};`;
   }
+
   const framing = [
-    ['tn-fox', (v) => { CAMERA_SETTINGS.framingOffset[0] = v; }, () => CAMERA_SETTINGS.framingOffset[0]],
-    ['tn-foy', (v) => { CAMERA_SETTINGS.framingOffset[1] = v; }, () => CAMERA_SETTINGS.framingOffset[1]],
+    ['tn-fox', (v) => { prof().offset[0] = v; }, () => prof().offset[0]],
+    ['tn-foy', (v) => { prof().offset[1] = v; }, () => prof().offset[1]],
+    ['tn-fzoom', (v) => { prof().zoom = v; }, () => prof().zoom],
     ['tn-dist', (v) => { CAMERA_SETTINGS.distanceScale = v; }, () => CAMERA_SETTINGS.distanceScale],
   ];
   for (const [id, apply, initial] of framing) {
@@ -608,18 +649,36 @@ export function initTuner() {
       // Free-look owns the camera outright, so the rig won't re-apply framing
       // until it is switched back off.
       if (!freeLook.enabled) rig.update(1 / 60);
+      // Update the warning here rather than leaving it to the timer: under a
+      // heavy render load the interval gets starved and can lag by ~a second,
+      // which reads as the warning being stuck on after you have fixed it.
+      refreshOffscreen();
       render();
     });
   }
-  $('tn-framereset').addEventListener('click', () => {
-    CAMERA_SETTINGS.framingOffset[0] = 0;
-    CAMERA_SETTINGS.framingOffset[1] = 0;
+
+  /** Pull the sliders back in line with whichever profile is now active. */
+  function refreshFramingInputs() {
     for (const [id, , initial] of framing) {
       $(id).value = initial();
       $(`${id}-v`).textContent = (+$(id).value).toFixed(2);
     }
+    const name = rig.framingProfile();
+    const badge = $('tn-profile');
+    badge.textContent = name;
+    badge.title = `Editing the ${name} profile — canvas is ` +
+      `${scene3d.canvas.clientWidth}x${scene3d.canvas.clientHeight}`;
+  }
+
+  $('tn-framereset').addEventListener('click', () => {
+    const p = prof();
+    p.offset[0] = 0;
+    p.offset[1] = 0;
+    p.zoom = 1;
+    refreshFramingInputs();
     refreshCamSet();
     if (!freeLook.enabled) rig.update(1 / 60);
+    refreshOffscreen();
     render();
   });
   $('tn-camsetcopy').addEventListener('click', () =>
@@ -855,8 +914,45 @@ export function initTuner() {
     scene3d.resize();
     if (dbg.ScrollTrigger) dbg.ScrollTrigger.refresh();
     refreshDevice();
+    // Resizing the stage can flip which framing profile is active, so the
+    // sliders have to re-bind to the profile now in effect.
+    refreshFramingInputs();
+    if (!freeLook.enabled) rig.update(1 / 60);
+    refreshOffscreen();
     render();
   });
+
+  /**
+   * Warn when the authored framing has pushed the model past the screen edge.
+   *
+   * Deliberately measures the CURRENT frame with the live camera rather than
+   * sweeping every beat — sweeping would mean driving the rig to other
+   * progress values, which would visibly jump the view the author is editing.
+   * Uses the bounding box, which is conservative, so it stays quiet at the
+   * shipped defaults (worst case 0.84 of the way to the edge).
+   */
+  const _corner = new THREE.Vector3();
+  function refreshOffscreen() {
+    const bb = scene3d.bounds;
+    const cam = scene3d.camera;
+    cam.updateMatrixWorld();
+    let worst = 0;
+    for (const x of [bb.min.x, bb.max.x])
+      for (const y of [bb.min.y, bb.max.y])
+        for (const z of [bb.min.z, bb.max.z]) {
+          _corner.set(x, y, z).project(cam);
+          worst = Math.max(worst, Math.abs(_corner.x), Math.abs(_corner.y));
+        }
+    const el = $('tn-offscreen');
+    if (worst > 1.001) {
+      el.style.display = '';
+      el.textContent =
+        `⚠ ${Math.round(((worst - 1) / worst) * 100)}% of the model is off ` +
+        `screen at this angle. Pull Zoom up or ease the offset back.`;
+    } else {
+      el.style.display = 'none';
+    }
+  }
 
   function refreshDevice() {
     const w = scene3d.canvas.clientWidth;
@@ -966,7 +1062,21 @@ export function initTuner() {
       driftEl.style.display = 'none';
     }
   }
-  setInterval(() => { updateCamera(); refreshStats(); }, 120);
+  // The window itself can be resized without touching the tuner, which can
+  // flip the active profile — so re-bind on a timer rather than only on the
+  // device-preset change.
+  let lastProfile = rig.framingProfile();
+  setInterval(() => {
+    updateCamera();
+    refreshStats();
+    refreshOffscreen();
+    const now = rig.framingProfile();
+    if (now !== lastProfile) {
+      lastProfile = now;
+      refreshFramingInputs();
+      refreshDevice();
+    }
+  }, 120);
 
   // The main loop only renders while the section is on screen; nudge a frame
   // after edits made while it is parked.
@@ -1006,9 +1116,11 @@ export function initTuner() {
   refreshInputs();
   refreshLookOut();
   refreshFxOut();
+  refreshFramingInputs();
   refreshCamSet();
   refreshKeyframes();
   refreshDevice();
+  refreshOffscreen();
   updateCamera();
   refreshStats();
   syncScene();

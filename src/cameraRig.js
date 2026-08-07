@@ -68,7 +68,42 @@ export class CameraRig {
    * screen edges on a phone. Ramping rather than switching means rotating a
    * device or dragging a window across the threshold does not jump.
    */
+  /**
+   * Which framing profile this viewport uses, 'mobile' or 'desktop'.
+   *
+   * Measured off the CANVAS rather than the window: the tuner's device preview
+   * resizes the stage while the window stays put, so keying off the window
+   * would leave you editing the desktop profile while looking at a phone.
+   * Compact on EITHER axis counts, so a sideways phone (wide but short) is
+   * still mobile.
+   */
+  framingProfile() {
+    const f = CAMERA_SETTINGS.framing;
+    if (!f) return 'desktop';
+    const { clientWidth: w, clientHeight: h } = this.scene3d.canvas;
+    const compact =
+      (w > 0 && w < f.compactBelowWidth) || (h > 0 && h < f.compactBelowHeight);
+    return compact ? 'mobile' : 'desktop';
+  }
+
+  /** The active profile's authored offset + zoom. */
+  activeFraming() {
+    const f = CAMERA_SETTINGS.framing;
+    return (f && f[this.framingProfile()]) || { offset: [0, 0], zoom: 1 };
+  }
+
+  /**
+   * Final crop multiplier: the automatic corrections, times the active
+   * profile's authored zoom. Multiplying rather than overriding is what lets
+   * an author pull the model back on mobile without disabling the safety
+   * layers that stop it being clipped.
+   */
   distanceScale() {
+    return this.autoDistanceScale() * (this.activeFraming().zoom || 1);
+  }
+
+  /** Crop multiplier from the automatic corrections alone. */
+  autoDistanceScale() {
     const { distanceScale, narrowCrop, cardClearance } = CAMERA_SETTINGS;
 
     // Short landscape steps back a little so the card-clearance lift below
@@ -161,9 +196,9 @@ export class CameraRig {
 
   applyFramingOffset(radius) {
     const cam = this.scene3d.camera;
-    const [ox, oy] = CAMERA_SETTINGS.framingOffset;
+    // The active profile's authored offset, plus the automatic card clearance.
+    const [ox, oy] = this.activeFraming().offset;
     const fx = ox;
-    // Author's offset plus the automatic card clearance.
     const fy = oy + this.cardClearanceOffset();
 
     if (!fx && !fy) {

@@ -151,10 +151,32 @@ Two details that matter when capturing keyframes:
 With free look on, a bare drag orbits, so shift-click (not plain click) places
 the highlight.
 
-**Model on canvas** — the `Model X` / `Model Y` sliders in the same panel move
-the model *within the frame* without touching the orbit, which is how you keep
-the subject clear of the story card. `Distance` is the global crop
-(`distanceScale`). **Copy CAMERA_SETTINGS** writes all three out.
+**Model on canvas** — `Model X` / `Model Y` / `Zoom` move the model *within the
+frame* without touching the orbit, which is how you keep the subject clear of
+the story card.
+
+These are **per screen size**. The badge next to the heading shows which
+profile you are editing: pick a device in **Mobile tester** and it switches to
+`mobile`, go back to full window for `desktop`. Each keeps its own values, so
+you can compose mobile and desktop independently and **Copy CAMERA_SETTINGS**
+emits both. `Distance` below them is global and affects every screen.
+
+The profile is chosen by **canvas** size, not window size — that is what makes
+the device preview work at all, since it resizes the stage while the window
+stays put. A viewport is compact when *either* dimension is small
+(`compactBelowWidth` / `compactBelowHeight`), so a sideways phone — wide but
+short — is still `mobile`; a width-only test would have sent it to `desktop`.
+
+Both values stack **on top of** the automatic corrections below, rather than
+replacing them, so `narrowCrop` and `cardClearance` keep guaranteeing nothing
+is clipped and the card never covers the model. You are nudging a frame that is
+already safe. If you push too far anyway, the panel warns you live with how
+much of the model is off screen.
+
+One thing that surprises people: the offset is a *fraction of the viewport*, so
+it is a fixed shift in screen space. Zooming out shrinks the model around an
+already-shifted centre — it softens a large offset but cannot rescue an extreme
+one. Ease the offset back instead.
 
 The offset is a fraction of the viewport, so it frames the same on a phone and
 a monitor, and it is applied as a **camera truck** — camera and look target
